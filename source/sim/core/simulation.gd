@@ -51,6 +51,7 @@ const Look = preload("res://sim/player/look.gd")
 const Bleeding = preload("res://sim/combat/bleeding.gd")
 const FamilyEconomy = preload("res://sim/entities/family_economy.gd")
 const StallService = preload("res://sim/economy/stall_service.gd")
+const Light = preload("res://sim/world/light.gd")
 ## Commands that are the player doing something: refused while down or restrained, and they wake
 ## a sleeping player.
 const PLAYER_ACTS := ["move_player", "player_strike", "interact", "shotgun_fire", "hotbar_use", "eat", "drink", "treat_body", "context_action", "walk_to", "travel", "loot_take", "loot_all", "loot_coins", "loot_strip", "loot_give", "wear_item", "take_off", "hold_item", "hotbar_assign", "crouch_toggle", "travel_run", "shotgun_toggle", "shotgun_reload", "person_trade", "take_item", "surrender", "haggle"]
@@ -107,6 +108,7 @@ func start_game(population: int = 5) -> void:
 	Sheriff.ensure(self)
 	Market.ensure_tents(self)
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # last: the roads, woods and towns are all in place
+	Light.ensure_lamps(self)
 
 func new_id() -> int:
 	var result: int = state.next_id
@@ -551,6 +553,7 @@ func restore(snapshot_data: Dictionary) -> void:
 	# After the layout upgrades, which may rebuild furniture: re-links the existing chests.
 	if state.has("households"): Chests.ensure_all(self)
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # signposts in older saves learn their distances
+	Light.ensure_lamps(self)   # street lamps for saves made before they existed
 	if state.has("routes"):
 		BodyHealth.initialize(state)
 		PlayerActions.initialize(state)

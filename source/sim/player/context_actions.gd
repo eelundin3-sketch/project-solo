@@ -21,7 +21,7 @@ const PART_NAMES := {"bed": "Bed", "table": "Table", "chair": "Chair", "lamp": "
 const PART_LINES := {"table": "A plain wooden table.", "chair": "A wooden chair.", "lamp": "An oil lamp.", "shelf": "Shelves of odds and ends.",
 	"booking_desk": "Where prisoners are booked in and the sheriff does his paperwork.", "locker": "Prisoners' belongings are kept in here.",
 	"toilet": "A bucket toilet.", "bed": "A bed.", "stockpile": "The town's goods, stacked.", "workshop_storage": "Materials waiting to be worked."}
-const ITEM_NAMES := {"log": "logs", "plank": "planks", "food": "food", "rye": "rye", "bandage": "bandages", "antiseptic": "antiseptic", "shell": "shells", "shotgun": "shotgun", "rifle": "rifle", "cartridge": "cartridges", "tool": "iron tools", "ore": "iron ore"}
+const ITEM_NAMES := {"log": "logs", "plank": "planks", "food": "food", "rye": "rye", "bandage": "bandages", "antiseptic": "antiseptic", "shell": "shells", "shotgun": "shotgun", "rifle": "rifle", "cartridge": "cartridges", "tool": "iron tools", "ore": "iron ore", "lantern": "lantern"}
 
 static func _opt(id: String, label: String, icon: String, enabled: bool = true, reason: String = "") -> Dictionary:
 	return {"id": id, "label": label, "icon": icon, "enabled": enabled, "reason": reason}

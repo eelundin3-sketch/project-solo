@@ -466,6 +466,20 @@ static func construction(c: Node2D, entity: Dictionary, site: Dictionary, rect: 
 		box(c, Rect2(door + Vector2(4, 0), Vector2(16, 6)), Color("d2b47e"), 1)
 	c.draw_rect(rect, Color("dfc58f", 0.55), false, 1)
 
+## A street lamp: a tall iron post with a glass lantern box on top. The light pool itself comes
+## from the night layer, so the drawing is the same by day and by night.
+static func street_lamp(c: Node2D, p: Vector2) -> void:
+	Props.ellipse(c, p + Vector2(0, 3), Vector2(8, 2.8), Color(0, 0, 0, 0.2), 0, INK, 0)
+	c.draw_rect(Rect2(p + Vector2(-4, -2), Vector2(8, 4)), Color("3e3a36"))
+	c.draw_line(p + Vector2(0, -1), p + Vector2(0, -44), Color("2f2b28"), 3.0, true)
+	c.draw_line(p + Vector2(0.8, -3), p + Vector2(0.8, -42), Color("6a625a"), 1.0, true)
+	c.draw_line(p + Vector2(0, -44), p + Vector2(6, -46), Color("2f2b28"), 2.0, true)
+	var box := Rect2(p + Vector2(-5, -56), Vector2(10, 11))
+	c.draw_rect(box, Color("f1d48a", 0.9))
+	c.draw_rect(box, Color("2f2b28"), false, 1.5)
+	c.draw_line(p + Vector2(0, -56), p + Vector2(0, -45), Color("2f2b28", 0.7), 1.0)
+	c.draw_colored_polygon(PackedVector2Array([p + Vector2(-7, -56), p + Vector2(7, -56), p + Vector2(0, -61)]), Color("2f2b28"))
+
 static func lamp(c: Node2D, p: Vector2) -> void:
 	for radius in [23, 17, 11]:
 		c.draw_circle(p + Vector2(0, -24), radius, Color(1.0, 0.77, 0.32, 0.045))

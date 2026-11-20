@@ -6,7 +6,7 @@ const Outfits = preload("res://sim/entities/outfits.gd")
 
 ## Tenths of a weight unit per item. Anything not listed (and every clothing piece) weighs 0.5.
 const WEIGHT_TENTHS := {"food": 5, "rye": 5, "bandage": 2, "antiseptic": 3, "shell": 1, "tool": 30,
-	"plank": 30, "ore": 40, "log": 60, "shotgun": 40, "rifle": 45, "cartridge": 1}
+	"plank": 30, "ore": 40, "log": 60, "shotgun": 40, "rifle": 45, "cartridge": 1, "lantern": 10}
 const DEFAULT_TENTHS := 5
 const BASE_LIMIT := 400          # 40.0: what you carry in your hands and pockets
 const PACK_BONUS := 150          # a backpack adds 15.0

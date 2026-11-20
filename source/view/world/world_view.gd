@@ -14,6 +14,7 @@ const DrawnCharacter = preload("res://view/actors/drawn_character.gd")
 const RoadSurface = preload("res://view/world/road_surface.gd")
 const LANDSCAPE = preload("res://view/world/landscape.gdshader")
 const Probe = preload("res://sim/diagnostics/perf_probe.gd")
+const NightLayer = preload("res://view/world/night_layer.gd")
 const CELL: float = 24.0
 ## Characters are drawn at half size so they are in proportion to doors, furniture and trees.
 const CHAR_SCALE: float = 0.625
@@ -54,6 +55,7 @@ var refresh_age: float = 0.0
 var last_camera: Vector2 = Vector2.INF
 var last_zoom: Vector2 = Vector2.ZERO
 var daylight: CanvasModulate
+var night: Node2D            # darkness with lamp, window and lantern pools (night_layer.gd)
 var building_rects: Array[Rect2i] = []
 var building_rects_signature: Array = []
 var atmosphere_time: float = 0.0
@@ -213,6 +215,10 @@ func _ready() -> void:
 	speech_layer.projector = self
 	speech_layer.z_index = 20
 	add_child(speech_layer)
+	night = NightLayer.new()
+	night.projector = self
+	night.z_index = 15   # over the world and the people, under the speech bubbles
+	add_child(night)
 
 func animate(delta: float, paused: bool, speed: int) -> void:
 	if simulation == null:
@@ -239,8 +245,12 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	var light: float = smoothstep(-0.35, 0.25, sun)
 	var weather: Dictionary = simulation.state.get("weather", {})
 	var overcast: float = _weather_amount(weather, "rain") * 0.17 + _weather_amount(weather, "snow") * 0.10 + _weather_amount(weather, "fog") * 0.13
-	daylight.color = Color("8797b0").lerp(Color("fff1d5"), light).darkened(overcast)
+	# The night layer does the darkening (with light pools cut out); the tint only cools the colours.
+	daylight.color = Color("c3cbe0").lerp(Color("fff1d5"), light).darkened(overcast)
 	sun_overcast = overcast
+	night.simulation = simulation
+	night.update(minf(delta, 0.1), view_bounds(), overcast)
+	t = _lap("v:night", t)
 	_update_shadow_layers()
 	# Speech bubbles only while someone is talking (plus one redraw to clear the last one).
 	var talking: bool = false
@@ -932,6 +942,7 @@ func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D 
 			MapArt.construction(canvas, entity, site, rect)
 		"caravan": MapArt.cart(canvas, p)
 		"signpost": MapArt.signpost(canvas, p, entity.get("ways", []))
+		"street_lamp": MapArt.street_lamp(canvas, p)
 		"ore":
 			if entity.get("big", false):
 				var rr: Array = entity.rock_rect

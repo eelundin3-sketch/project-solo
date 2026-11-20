@@ -41,15 +41,9 @@ static func Law() -> GDScript:
 
 ## The town the player is in or next to (nearest square within 70 cells), or 0.
 static func town_of(s: Dictionary, cell: Array) -> int:
-	var best := 0
-	var best_distance := 70.0
-	for town in s.get("settlements", {}).values():
-		var store: Array = s.entities[str(town.warehouse)].cell
-		var d: float = Vector2(store[0] - cell[0], store[1] - cell[1]).length()
-		if d < best_distance:
-			best_distance = d
-			best = int(town.id)
-	return best
+	var Region = load("res://sim/world/region.gd")
+	var town: int = Region.of(s, cell)
+	return town if town != 0 and Region.gap_squared(s, town, cell) < 70 * 70 else 0
 
 ## The town that hears a shot at `origin` (0 when nobody official is in earshot).
 static func town_in_earshot(s: Dictionary, origin: Array, heard: int) -> int:

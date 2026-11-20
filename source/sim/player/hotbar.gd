@@ -6,7 +6,7 @@ const Inventory = preload("res://sim/inventory/inventory_store.gd")
 const Shotgun = preload("res://sim/combat/shotgun.gd")
 const PlayerActions = preload("res://sim/player/player_actions.gd")
 const SLOTS := 4
-const ITEMS: Array[String] = ["rifle", "cartridge", "shotgun", "shell", "tool", "bandage", "antiseptic", "food", "rye", "log", "plank", "ore"]
+const ITEMS: Array[String] = ["rifle", "cartridge", "shotgun", "shell", "tool", "bandage", "antiseptic", "food", "rye", "log", "plank", "ore", "lantern"]
 
 static func initialize(s: Dictionary) -> void:
 	if not s.has("player") or not s.has("player_control") or s.has("hotbar"): return
