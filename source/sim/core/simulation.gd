@@ -217,6 +217,7 @@ func step() -> void:
 			Planner.update(self)
 		Probe.mark("planner")
 		if state.has("markets") and state.tick % 600 == 300: Market.ensure_tents(self)
+		if state.has("markets") and state.tick % 600 == 310: Market.note_prices(state)
 		if state.has("markets") and state.tick % 300 == 0:
 			for town_id in state.markets:
 				Market.clear_market(state, int(town_id))
