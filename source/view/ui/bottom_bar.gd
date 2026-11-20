@@ -149,6 +149,10 @@ func _draw() -> void:
 	var clock_right: float = size.x - 24.0
 	draw_string(font, Vector2(clock_right - 120, size.y - 86), "%d d." % days, HORIZONTAL_ALIGNMENT_RIGHT, 120, 24, Color("f4ecd6"))
 	draw_string(font, Vector2(clock_right - 120, size.y - 60), "%d h." % hours, HORIZONTAL_ALIGNMENT_RIGHT, 120, 24, Color("f4ecd6"))
+	# The season and the part of the day (morning, day, evening, night) above the clock.
+	var Weather = load("res://sim/world/weather.gd")
+	var when: String = "%s · %s" % [String(Weather.SEASON_NAMES[Weather.season(s)]).capitalize(), load("res://sim/world/day_clock.gd").phase_name(s)]
+	draw_string(font, Vector2(clock_right - 200, size.y - 112), when, HORIZONTAL_ALIGNMENT_RIGHT, 200, 15, Color("d9ccb0"))
 	var paused: bool = clock != null and clock.paused
 	var speed: int = clock.speed if clock != null else 1
 	for key in ["slower", "speed", "pause", "faster"]:

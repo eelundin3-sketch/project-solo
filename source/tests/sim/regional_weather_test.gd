@@ -75,7 +75,7 @@ func _initialize() -> void:
 	check(Crops.expected_yield(dust_field) >= Crops.cells(dust_field), "Every cell still gives at least 1")
 	Weather.of_town(s, dust).dry_days = 6
 	var held: int = s.tick
-	s.tick = Weather.DAY + 100   # spring, so the season does not change the pace
+	s.tick = Weather.season_start_tick(Weather.SPRING) + 100   # spring, so the season does not change the pace
 	check(Crops.growth_step(s, dust_field) == 5, "From 5 dry days crops grow at half speed")
 	s.tick = held
 

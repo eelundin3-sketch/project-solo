@@ -1,11 +1,11 @@
 extends SceneTree
-## Late autumn through the winter into spring (milestone 5, E7): about nine days of the full game.
+## Late autumn through the winter into spring (milestone 5, E7): about seventeen days of the full game.
 ## The towns must get through the winter on their stores (nobody left starving), money and goods
 ## stay conserved, the fields lie bare in winter and are sown again in spring.
 const Sim = preload("res://sim/core/simulation.gd")
 const Checks = preload("res://sim/diagnostics/invariants.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
-const SEASON := 14400 * 7
+const Weather = preload("res://sim/world/weather.gd")
 var failures: int = 0
 func check(condition: bool, message: String) -> void:
 	if not condition:
@@ -23,18 +23,18 @@ func _initialize() -> void:
 	var sim := Sim.new(523)
 	sim.start_game()
 	var s: Dictionary = sim.state
-	s.tick = SEASON * 2 + 14400 * 5   # autumn, day 6
+	s.tick = Weather.season_start_tick(Weather.AUTUMN) + 14400 * 13   # autumn, day 14
 	var worst_hungry := 0
 	var bare_in_winter := true
 	var start := Time.get_ticks_msec()
-	while s.tick < SEASON * 4 + 14400 + 7300:   # to midday on the second day of spring
+	while s.tick < Weather.season_start_tick(Weather.SPRING) + 14400 + 7300:   # to midday on the second day of spring
 		sim.step()
 		if s.tick % 5000 == 0:
 			var errors := Checks.validate(s)
 			if not errors.is_empty(): check(false, "Invariants at tick %d: %s" % [s.tick, errors])
 		if s.tick % 3600 == 0:
 			worst_hungry = maxi(worst_hungry, hungry_share(s))
-		if s.tick == SEASON * 3 + 14400 * 3:
+		if s.tick == Weather.season_start_tick(Weather.WINTER) + 14400 * 7:   # midwinter
 			for plot in s.crops.values():
 				if plot.kind == "field" and plot.state != "fallow": bare_in_winter = false
 	check(bare_in_winter, "The fields lie bare in midwinter")

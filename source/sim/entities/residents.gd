@@ -1,4 +1,5 @@
 extends RefCounted
+const DayClock = preload("res://sim/world/day_clock.gd")
 const World = preload("res://sim/world/world_db.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
 const Jobs = preload("res://sim/jobs/job_board.gd")
@@ -104,8 +105,9 @@ static func _decide(sim: RefCounted, npc: Dictionary) -> void:
 	var s: Dictionary = sim.state
 	if npc.retry_at > s.tick:
 		return
-	# At night anyone with some tiredness goes to bed; by day only the exhausted lie down.
-	var sleepy: bool = (Needs.is_night(s) and npc.fatigue >= 20) or npc.fatigue >= 75
+	# After their own bedtime (21:00-22:00) anyone with some tiredness goes to bed; by day only the
+	# exhausted lie down (DayClock).
+	var sleepy: bool = (DayClock.bed_hours(s, npc) and npc.fatigue >= 20) or npc.fatigue >= 75
 	if npc.hunger >= 60 or npc.get("thirst", 0) >= 60 or sleepy:
 		if npc.job != 0:
 			Jobs.release(s, npc.job, "INTERRUPTED_FOR_NEEDS")
@@ -245,11 +247,11 @@ static func _need_action(sim: RefCounted, npc: Dictionary) -> void:
 					npc.goal = ""
 					return
 				s.entities[str(npc.id)].cell = bed.lie.duplicate()
-				npc.sleeping = {"lie": bed.lie, "approach": bed.approach, "rot": bed.rot, "bed_rect": bed.get("rect", []), "night": Needs.is_night(s), "since": s.tick}
+				npc.sleeping = {"lie": bed.lie, "approach": bed.approach, "rot": bed.rot, "bed_rect": bed.get("rect", []), "night": DayClock.bed_hours(s, npc), "since": s.tick}
 				npc.status = "Sleeping in bed"
 			if s.tick % 10 == 0: npc.fatigue = maxi(0, npc.fatigue - 1)
-			var minute: int = (s.tick / 10) % 1440
-			var morning: bool = minute >= 360 and minute < 1230
+			# A night's sleep ends at the person's own waking time, 06:00-07:00.
+			var morning: bool = not DayClock.bed_hours(s, npc)
 			if (npc.sleeping.night and morning) or (not npc.sleeping.night and npc.fatigue <= 15) or npc.hunger >= 90 or npc.get("thirst", 0) >= 90:
 				Households.wake(s, npc)
 		"rest":

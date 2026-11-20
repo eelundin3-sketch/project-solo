@@ -119,7 +119,8 @@ func refresh(sim: RefCounted, clock: RefCounted, _selected: int, frame_ms: float
 	var s: Dictionary = sim.state
 	var day: int = s.tick / 14400 + 1
 	var minute: int = (s.tick / 10) % 1440
-	heading.text = "ALDER HOLLOW · DAY %d · %02d:%02d" % [day, minute / 60, minute % 60]
+	var part: String = load("res://sim/world/day_clock.gd").phase_name(s).to_upper()
+	heading.text = "ALDER HOLLOW · DAY %d · %02d:%02d · %s" % [day, minute / 60, minute % 60, part]
 	var stock: Dictionary = s.inventories[str(s.warehouse)].items
 	var clock_state: String = ("Paused · " if clock.paused else "") + "%d×" % clock.speed
 	var local_count: int = s.residents.values().filter(func(npc: Dictionary) -> bool: return npc.settlement == 1 and npc.health > 0).size()

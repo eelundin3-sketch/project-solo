@@ -17,7 +17,7 @@ const START_PURSE := 60
 const POCKET_MONEY := 15        # what each grown-up keeps in their own pocket when the purse is set up
 const FOOD_PER_HEAD := 2        # a pantry below this many loaves per person needs shopping
 const CARRY := 8                # what one shopper can carry home
-const SHOPPING_TICK := 4200     # 07:00
+const SHOPPING_TICK := 4500     # 07:30, once everyone is up
 const DAY := 14400
 
 static func purse_key(household_key: String) -> String:
@@ -152,6 +152,7 @@ static func _shopper(s: Dictionary, household: Dictionary) -> Dictionary:
 		if npc.is_empty() or int(npc.health) <= 0 or npc.occupation in ["Child", "Sheriff", "Trader"]: continue
 		if not npc.get("sleeping", {}).is_empty() or not npc.get("arrest", {}).is_empty() or not npc.get("fear", {}).is_empty(): continue
 		if not npc.get("serving", {}).is_empty() or npc.get("goal", "") != "": continue
+		if not npc.get("migration", {}).is_empty(): continue   # on the way to another town
 		return npc
 	return {}
 

@@ -11,7 +11,8 @@ const Region = preload("res://sim/world/region.gd")
 const BLOCK_TICKS: int = 3600
 const TRANSITION_TICKS: int = 300
 const DAY: int = 14400
-const SEASON_DAYS: int = 7
+const SEASON_DAYS: int = 15
+const SEASON_OFFSET: int = 1   # the first day of a game is the first day of summer
 const SPRING := 0
 const SUMMER := 1
 const AUTUMN := 2
@@ -27,11 +28,24 @@ const DEFAULT_CLIMATE := {"rain": 35, "fog": 15}
 const MIRRORED := ["kind", "previous", "since", "wind", "snow"]
 
 static func season(s: Dictionary) -> int:
-	return (int(s.tick) / (DAY * SEASON_DAYS)) % 4
+	return season_of(int(s.tick))
 
-## 0 on the first day of a season, up to 6.
+static func season_of(tick: int) -> int:
+	return (tick / (DAY * SEASON_DAYS) + SEASON_OFFSET) % 4
+
+## 0 on the first day of a season, up to 14.
 static func day_of_season(s: Dictionary) -> int:
 	return (int(s.tick) / DAY) % SEASON_DAYS
+
+## True on the very first tick of `season` (midnight starting its first day).
+static func is_season_start(s: Dictionary, which: int) -> bool:
+	return int(s.tick) % (DAY * SEASON_DAYS) == 0 and season(s) == which
+
+## The first tick of the `nth` time `which` season comes round (n = 0 is the first; summer
+## begins at tick 0).
+static func season_start_tick(which: int, nth: int = 0) -> int:
+	var index: int = posmod(which - SEASON_OFFSET, 4) + nth * 4
+	return index * DAY * SEASON_DAYS
 
 static func climate(s: Dictionary, town: int) -> Dictionary:
 	var settlement: Dictionary = s.get("settlements", {}).get(str(town), {})

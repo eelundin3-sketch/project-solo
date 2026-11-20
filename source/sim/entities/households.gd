@@ -10,7 +10,7 @@ const HOME_CAPACITY := 4
 const LODGE_CAPACITY := 8
 const CHILD_GROWN_DAYS := 8
 const MAX_CHILDREN := 3
-const MORNING := Vector2i(360, 450)   # 06:00-07:30
+const MORNING := Vector2i(420, 510)   # 07:00-08:30, once everyone is up
 const EVENING := Vector2i(1050, 1170) # 17:30-19:30
 
 static func capacity(s: Dictionary, home_id: int) -> int:

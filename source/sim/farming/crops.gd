@@ -54,7 +54,7 @@ static func sowing_season(s: Dictionary) -> bool:
 
 ## The tick a season begins (spring, summer, autumn or winter of the current year).
 static func season_start(s: Dictionary, season: int) -> bool:
-	return int(s.tick) % (Weather.DAY * Weather.SEASON_DAYS * 4) == Weather.DAY * Weather.SEASON_DAYS * season
+	return Weather.is_season_start(s, season)
 
 ## Registers a plot; `grown` lets the starting scenario begin mid-season.
 static func add_plot(s: Dictionary, kind: String, rect: Array, settlement: int, farm: int = 0, home: int = 0, grown: int = 0) -> String:

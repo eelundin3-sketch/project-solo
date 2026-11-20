@@ -478,3 +478,88 @@ coming (the target isn't walking toward you and isn't already alert), you can
 kill or knock out without a sound. Such crimes call
 `Law.crime(..., silent = true)`, and then a sheriff counts as a witness only
 with a clear line of sight. Normally any sheriff within 24 cells counts.
+
+## 2026-11-20: Milestone 5, night, weather and seasons
+
+**Light is simulation data.** Street lamps are entities (`street_lamp`) placed at
+fixed spacing beside every town street and lane, with no randomness. They are
+added at the end of `start_game`, and in `restore` for older saves. They burn
+19:30-05:30 on a timer (no lamplighter yet). `Light.level(s, cell)` gives 0-100
+from daylight, lamps within 5 cells and the player's lantern, so milestone 7's
+stealth reads it from the sim. The lantern is an ordinary item, lit while held
+in hand, so it needs no new command. `Needs.is_night` is unchanged, so sleep and
+trespass behave as before; lamps use their own window.
+
+**One darkness pass for the night.** The view draws night as one shader
+rectangle with up to 64 light pools (lamps, lit windows of homes with someone
+awake, lanterns), nearest the middle of the view first. It sits under the
+speech bubbles, which stay readable. The day/night `CanvasModulate` keeps only
+a cool tint, so night is not darkened twice. No `PointLight2D` nodes, because
+each one costs.
+
+**Weather per town; the top-level record is the player's.** `s.weather.regions[town]`
+holds kind, wind, snow, mud and dry days per town, rolled on
+`weather:kind:<id>` from a climate table (Reedbank wet, Dustvale dry).
+`s.weather.kind/previous/since/wind/snow` mirrors the player's town at each
+roll and when the player walks into another town's weather, so every old
+reader works unchanged. A tile belongs to the nearest town (`Region.of`, now
+the one shared lookup; `Gunfire.town_of` uses it). A world without towns keeps
+the old single roll. Old saves start each town with the weather they had.
+
+**Drought and seasons work through growth, not new stock.** Dry days slow
+crops (half speed from 5, none from 9) and cut the yield per cell (never below
+1). Summer grows 20% faster and winter not at all. The first frost turns every
+growing plot fallow (the crop is lost). The autumn harvest leaves a field bare,
+and spring sows it again. Farmers switch to wood and ore work for the winter
+(`seasonal: "Farmer"`) and go back to farming in spring. A late-autumn-to-spring
+soak shows at worst 4% of people near starving.
+
+**Whole families move.** After a harvest at half or less, a farming household
+with an empty pantry may move (25% a day each, never the town's last farmer)
+to the town that most wants farmers and has room. Room is a free house, or
+else beds in the lodge. The household keeps its key, so purse and surname move
+with it. This also fixed coins being erased when a `migrant:` household broke
+up: `FamilyEconomy.ensure` now finds that household's town.
+
+**Fog and mud.** Fog cuts sight ranges by 40% where it lies: witnesses, fear,
+seeing a shot, and sheriffs spotting a wanted player. Rain makes road mud (5 an
+hour, drying 2 an hour); above 50 it adds 15% to each step on a road
+(`Pace.delay`).
+
+**Prices still follow stock.** The trend arrow compares today's quote with a
+daily snapshot (`markets[town].trend`). Prices the player has seen in a town
+(`player_status.known_prices`, refreshed hourly while there) give a "better in
+<town>" hint when 3 coins or more better, greyed after 3 days.
+
+**Not done here, on purpose:** lanterns are not sold in stores yet (the player
+starts with one); autumn trees only shift toward olive, because the tree art is
+drawn dark green and needs new art for true orange leaves; there is no rain
+sound (S3, milestone 13).
+
+## 2026-11-20: Four parts of the day, 15-day seasons, a summer start
+
+**[owner]** The day has four parts of six hours: morning 04-10, day 10-16,
+evening 16-22, night 22-04. Seasons are 15 days. A new game opens on the first
+day of summer, at 07:00 (the owner chose 07:00 over midnight or 10:00).
+
+**One clock file.** `sim/world/day_clock.gd` holds the parts of the day, the
+daylight curve (dawn 04-06, full light 06-20, dusk 20-22, dark at night) and
+the sun's path (rises east at 05:00, highest at 13:00, sets west at 21:00).
+The day tint (with a golden evening), the night darkness, sun shadows,
+`Light.level`, street lamps (20:00-05:00), `Needs.is_night`, trespass night
+and shop hours all read it, so they cannot drift apart again. Before this,
+night meant four different things in four files.
+
+**Each person keeps their own hours.** Bedtime between 21:00 and 22:00 and
+waking time between 06:00 and 07:00, fixed from the person's id (no random
+stream, nothing saved). A tired person (fatigue 20 or more) goes to bed after
+their bedtime; the exhausted (75) still sleep any time. Shops are open
+07:00-21:00, family shopping is at 07:30, and the morning garden chores are at
+07:00-08:30, so people are up first. Greetings match the part of the day.
+
+**Summer first without moving tick 0.** The season formula carries an offset
+(`SEASON_OFFSET = 1`) instead of the game starting at a later tick, so tick 0
+is still day 1 at midnight and day numbers stay right. `start_game` sets the
+tick to 4,200 (07:00); `start_village` (bare test worlds) keeps tick 0. Saves
+made before this keep their tick and so may find themselves in a different
+season.

@@ -5,6 +5,7 @@ extends Node2D
 ## they stay readable. Reads simulation state only; never writes it.
 const World = preload("res://sim/world/world_db.gd")
 const Light = preload("res://sim/world/light.gd")
+const DayClock = preload("res://sim/world/day_clock.gd")
 const CELL: float = 24.0
 const MAX_LIGHTS := 64
 const REFRESH := 0.25      # seconds between rebuilding the slow part of the list (windows, lamps)
@@ -47,10 +48,10 @@ func _init() -> void:
 	mat.shader = shader
 	material = mat
 
-## Darkness from the same sun curve the day tint uses: 0 by day, about 0.7 at midnight.
+## Darkness from the same light curve the day tint uses (DayClock): none 06:00-20:00, rising
+## through dusk to about 0.7 for the night (22:00-04:00), lifting again at dawn.
 static func darkness_at(tick: int, overcast: float = 0.0) -> float:
-	var sun: float = sin((float(tick % 14400) / 14400.0 - 0.25) * TAU)
-	var day: float = smoothstep(-0.35, 0.25, sun)
+	var day: float = DayClock.light_amount(float(tick % 14400) / 14400.0)
 	return clampf((1.0 - day) * 0.72 + overcast * 0.25 * (1.0 - day), 0.0, 0.8)
 
 func update(delta: float, view: Rect2, overcast: float) -> void:

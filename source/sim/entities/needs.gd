@@ -35,9 +35,9 @@ static func mood_value(hunger: int, thirst: int, fatigue: int, pain: int, stress
 static func weather_kind(s: Dictionary) -> String:
 	return str(s.get("weather", {}).get("kind", "clear"))
 
+## The night part of the day, 22:00-04:00 (DayClock).
 static func is_night(s: Dictionary) -> bool:
-	var minute: int = (s.tick / 10) % 1440
-	return minute < 330 or minute >= 1230
+	return load("res://sim/world/day_clock.gd").is_night(s)
 
 static func bleeding_parts(s: Dictionary) -> int:
 	var count := 0

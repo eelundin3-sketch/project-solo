@@ -57,6 +57,12 @@ Big-push order when the owner asks: **PR #13 first**, then the feature branches 
 | **Talk with tone; bribes; persuasion** | `sim/player/talk.gd` | `talk_favours_test` |
 | **Favours** (bread for a bare pantry, bandages for an office) | `sim/player/requests.gd` | `talk_favours_test` |
 | **Journal (J)**; standing under town names on the map | `view/ui/journal_window.gd`, `medieval_map.gd` | `talk_favours_test`, `journal_capture` |
+| **Milestone 5: night lighting** (street lamps, lit windows, lantern; `Light.level`) | `sim/world/light.gd`, `view/world/night_layer.gd` | `light_test`, `night_capture` |
+| **Weather per town**, drought and crops, trades by climate, families moving | `sim/world/weather.gd`, `crops.gd`, `society.gd` | `regional_weather_test` |
+| **Mud, fog, rain/snow particles, wet ground** | `pace.gd`, `weather.gd`, `view/world/weather_layer.gd`, `landscape.gdshader` | `weather_feel_test`, `weather_capture` |
+| **Seasons and harvest**; seasonal colours | `crops.gd`, `professions.gd`, `world_view.gd` | `seasons_test`, `season_soak_test`, `season_capture` |
+| **Price trends** and prices known in other towns | `market.gd`, `trade_window.gd` | `price_trend_test`, `trade_capture` |
+| **Four parts of the day**, sun path and shadows, own bedtimes, 15-day seasons, summer start at 07:00 | `sim/world/day_clock.gd` | `day_clock_test`, `shadow_capture` |
 
 ## 3. Partly implemented (exact gaps)
 
@@ -69,7 +75,8 @@ Big-push order when the owner asks: **PR #13 first**, then the feature branches 
 | Your look | player only | buying clothes; NPC looks do not change |
 | Body carrying | works and is tested | the pose is basic: the body is drawn up at shoulder height, no real carry animation (milestone 7) |
 | Hit reactions | grip, aim, limp | dropped goods stay in the pack: there are no loose items on the ground |
-| Weather | global weather exists | per-town weather, mud, fog effects, crop effects (milestone 5) |
+| Lanterns | the player starts with one; held in hand it is lit | not sold in stores; NPC lanterns are drawn light only |
+| Seasonal trees | trees tint and go bare in winter | autumn leaves only shift toward olive: the tree art needs real autumn colours |
 | Item weights | table in `encumbrance.gd` | not in `content/items/core.json` (only 8 items listed there; weights default to 0.5 for the rest) |
 | Gun table | rifle, shotgun | pistol, bow, knife, gun wear (milestones 7 and 9) |
 | Takedown awareness | uses the target's next path step as "facing" | NPCs have no real facing field; stealth with light/noise not built |

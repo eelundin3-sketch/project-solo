@@ -6,8 +6,8 @@ extends RefCounted
 const World = preload("res://sim/world/world_db.gd")
 const DerivedCache = preload("res://sim/core/derived_cache.gd")
 
-const LIT_FROM := 1170      # 19:30, minutes into the day
-const LIT_UNTIL := 330      # 05:30
+const LIT_FROM := 1200      # 20:00, as dusk begins (minutes into the day)
+const LIT_UNTIL := 300      # 05:00, once dawn is well under way
 const SPACING := 10         # cells between lamps along a street
 const LAMP_REACH := 5       # cells a lamp lights
 const LANTERN_REACH := 4
@@ -16,18 +16,14 @@ const MAX_LAMPS_PER_TOWN := 24
 static func minute(s: Dictionary) -> int:
 	return (int(s.tick) / 10) % 1440
 
-## Street lamps burn from 19:30 to 05:30.
+## Street lamps burn from 20:00 to 05:00.
 static func lamps_lit(s: Dictionary) -> bool:
 	var m := minute(s)
 	return m >= LIT_FROM or m < LIT_UNTIL
 
-## Daylight alone, 0 (deep night) to 100 (full day), with an hour of dusk and dawn.
+## Daylight alone, 0 (deep night) to 100 (full day): see DayClock.daylight_at.
 static func daylight(s: Dictionary) -> int:
-	var m := minute(s)
-	if m >= 420 and m < 1140: return 100            # 07:00-19:00
-	if m >= 1260 or m < 300: return 10              # 21:00-05:00
-	if m >= 1140: return 100 - (m - 1140) * 90 / 120 # dusk, 19:00-21:00
-	return 10 + (m - 300) * 90 / 120                 # dawn, 05:00-07:00
+	return load("res://sim/world/day_clock.gd").daylight(s)
 
 ## Whether the player's lantern is burning (it is lit while held in hand).
 static func lantern_on(s: Dictionary) -> bool:

@@ -23,7 +23,7 @@ func run() -> void:
 	var store: Array = s.entities[str(s.settlements["1"].warehouse)].cell
 	var names := ["spring", "summer", "autumn", "winter"]
 	for season in range(4):
-		s.tick = 14400 * 7 * season + 14400 * 3 + 600 * 11
+		s.tick = load("res://sim/world/weather.gd").season_start_tick(season) + 14400 * 3 + 600 * 11
 		for region in s.weather.regions.values():
 			region.kind = "clear"; region.previous = "clear"; region.snow = 0; region.mud = 0
 		s.weather.kind = "clear"; s.weather.previous = "clear"; s.weather.snow = 0

@@ -90,7 +90,11 @@ func enable_society() -> void:
 	Society.initialize(state)
 	Risk.initialize(state)
 
+## A new game: the first day of summer, at 07:00 (DayClock: morning).
+const START_TICK := 4200
+
 func start_game(population: int = 5) -> void:
+	state.tick = START_TICK
 	start_village(population)
 	enable_production()
 	enable_economy()

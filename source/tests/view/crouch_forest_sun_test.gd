@@ -63,8 +63,8 @@ func _initialize() -> void:
 	# The sun: long shadows to the left in the morning, short at noon, long to the right in the evening, none at night.
 	var view = load("res://view/world/world_view.gd").new()
 	var morning: Dictionary = view.sun_shadow(14400 + 7 * 600)
-	var noon: Dictionary = view.sun_shadow(14400 + 12 * 600)
-	var evening: Dictionary = view.sun_shadow(14400 + 17 * 600)
+	var noon: Dictionary = view.sun_shadow(14400 + 13 * 600)      # the sun is highest at 13:00 (DayClock)
+	var evening: Dictionary = view.sun_shadow(14400 + 19 * 600)
 	var night: Dictionary = view.sun_shadow(14400 + 23 * 600)
 	check(morning.vector.x < -1.0, "Morning shadows reach left (%s)" % str(morning.vector))
 	check(evening.vector.x > 1.0, "Evening shadows reach right (%s)" % str(evening.vector))

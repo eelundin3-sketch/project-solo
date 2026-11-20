@@ -15,6 +15,7 @@ const RoadSurface = preload("res://view/world/road_surface.gd")
 const LANDSCAPE = preload("res://view/world/landscape.gdshader")
 const Probe = preload("res://sim/diagnostics/perf_probe.gd")
 const NightLayer = preload("res://view/world/night_layer.gd")
+const DayClock = preload("res://sim/world/day_clock.gd")
 const WeatherLayer = preload("res://view/world/weather_layer.gd")
 const CELL: float = 24.0
 ## Characters are drawn at half size so they are in proportion to doors, furniture and trees.
@@ -248,12 +249,15 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	_update_doors(minf(delta, 0.1))
 	t = _lap("v:doors", t)
 	# Lighting follows the authoritative 24-hour clock and freezes on pause.
-	var sun: float = sin((float(simulation.state.tick % 14400) / 14400.0 - 0.25) * TAU)
-	var light: float = smoothstep(-0.35, 0.25, sun)
+	# The four parts of the day (DayClock): dawn from 04:00, full light 06:00-20:00 with the evening
+	# turning golden, dusk 20:00-22:00, dark night 22:00-04:00.
+	var day_fraction: float = float(simulation.state.tick % 14400) / 14400.0
+	var light: float = DayClock.light_amount(day_fraction)
+	var glow: float = DayClock.evening_glow(day_fraction)
 	var weather: Dictionary = simulation.state.get("weather", {})
 	var overcast: float = _weather_amount(weather, "rain") * 0.17 + _weather_amount(weather, "snow") * 0.10 + _weather_amount(weather, "fog") * 0.13
 	# The night layer does the darkening (with light pools cut out); the tint only cools the colours.
-	daylight.color = Color("c3cbe0").lerp(Color("fff1d5"), light).darkened(overcast)
+	daylight.color = Color("c3cbe0").lerp(Color("fff1d5"), light).lerp(Color("ffd49a"), glow * 0.45 * (1.0 - overcast * 2.0)).darkened(overcast)
 	sun_overcast = overcast
 	weather_layer.simulation = simulation
 	weather_layer.update(view_bounds(), is_far(), _weather_amount)
@@ -314,9 +318,11 @@ func _sync_landscape() -> void:
 var season_key: Array = []
 func _sync_season() -> void:
 	var tick: int = int(simulation.state.tick)
-	var season_ticks: int = 14400 * 7
-	var season: int = (tick / season_ticks) % 4
-	var into: float = clampf(float(tick % season_ticks) / 14400.0, 0.0, 1.0)
+	var Weather = load("res://sim/world/weather.gd")
+	var season: int = Weather.season_of(tick)
+	var season_ticks: int = Weather.DAY * Weather.SEASON_DAYS
+	var into: float = clampf(float(tick % season_ticks) / float(Weather.DAY), 0.0, 1.0)
+	if tick < Weather.DAY: into = 1.0   # a new game opens in summer: nothing to blend from
 	var key := [season, snappedf(into, 0.05)]
 	if key == season_key: return
 	season_key = key
@@ -1053,8 +1059,8 @@ func draw_speech(canvas: Node2D) -> void:
 ## screen) towards noon, then lengthen to the right through the afternoon and fade at dusk.
 func sun_shadow(tick: int) -> Dictionary:
 	var day: float = float(tick % 14400) / 14400.0
-	var elevation: float = sin((day - 0.25) * TAU)          # matches the daylight colour cycle
-	var arc: float = clampf((day - 0.25) / 0.5, 0.0, 1.0)   # 06:00 east .. 18:00 west
+	var elevation: float = DayClock.sun_elevation(day)      # 0 at sunrise (05:00) and sunset (21:00), highest at 13:00
+	var arc: float = DayClock.sun_arc(day)                  # 05:00 east .. 21:00 west
 	var direction := Vector2(-cos(arc * PI), -0.42 * sin(arc * PI))
 	var angle: float = asin(clampf(elevation, 0.0, 1.0)) * 1.05
 	var length: float = clampf(cos(angle) / maxf(0.05, sin(angle)), 0.35, 3.4)
