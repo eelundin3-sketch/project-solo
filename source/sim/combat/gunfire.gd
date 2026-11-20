@@ -74,7 +74,7 @@ static func _heard_by(sim: RefCounted, origin: Array, heard: int) -> void:
 		if s.tick < int(npc.get("heard_shot_until", 0)): continue
 		var cell: Array = s.entities[key].cell
 		var gap: float = Vector2(cell[0] - origin[0], cell[1] - origin[1]).length()
-		if gap > float(heard) or gap <= 26.0 and Cover.line_clear(s, origin, cell): continue   # out of earshot, or saw it (fear.gd)
+		if gap > float(heard) or gap <= load("res://sim/world/weather.gd").sight(s, origin, 26.0) and Cover.line_clear(s, origin, cell): continue   # out of earshot, or saw it (fear.gd)
 		npc.heard_shot_until = s.tick + 300
 		Law()._say(sim, int(npc.id), ["Was that a gunshot?", "Shooting! Somewhere out there...", "Did you hear that?"][sim.random_int("speech", 0, 2)])
 		spoken += 1

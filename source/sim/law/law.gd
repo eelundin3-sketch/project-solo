@@ -112,7 +112,7 @@ static func crime(s: Dictionary, town: int, kind: String, victim: int, silent: b
 	for sheriff in sheriffs(s, town):
 		var cell: Array = s.entities[str(sheriff.id)].cell
 		var d: float = Vector2(cell[0] - player[0], cell[1] - player[1]).length()
-		if sheriff.id == victim or (d <= WITNESS_RANGE and (not silent or (sheriff.get("sleeping", {}).is_empty() and Cover.line_clear(s, cell, player)))):
+		if sheriff.id == victim or (d <= load("res://sim/world/weather.gd").sight(s, player, WITNESS_RANGE) and (not silent or (sheriff.get("sleeping", {}).is_empty() and Cover.line_clear(s, cell, player)))):
 			witnesses.append(sheriff)   # everyone who saw it (or was hit) comes
 			if d < nearest:
 				witness = sheriff       # the nearest takes the case
@@ -230,7 +230,7 @@ static func update(sim: RefCounted) -> void:
 		var gap := Vector2(player[0] - cell[0], player[1] - cell[1]).length()
 		if arrest.is_empty():
 			# A wanted player who comes into view is held at gunpoint by the nearest sheriff; the rest cover him.
-			if wanted_hours(s, npc.settlement) > 0 and gap <= SEE_RANGE and recognised(s, int(npc.settlement)) and not in_custody(s) and not restrained(s) and not Brawl.player_down(s) and npc.get("sleeping", {}).is_empty():
+			if wanted_hours(s, npc.settlement) > 0 and gap <= load("res://sim/world/weather.gd").sight(s, player, SEE_RANGE) and recognised(s, int(npc.settlement)) and not in_custody(s) and not restrained(s) and not Brawl.player_down(s) and npc.get("sleeping", {}).is_empty():
 				if _nearer_sheriff(s, npc, player) != 0:
 					npc.arrest = {"phase": "backup", "since": s.tick}
 					npc.goal = ""

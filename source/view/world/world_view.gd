@@ -15,6 +15,7 @@ const RoadSurface = preload("res://view/world/road_surface.gd")
 const LANDSCAPE = preload("res://view/world/landscape.gdshader")
 const Probe = preload("res://sim/diagnostics/perf_probe.gd")
 const NightLayer = preload("res://view/world/night_layer.gd")
+const WeatherLayer = preload("res://view/world/weather_layer.gd")
 const CELL: float = 24.0
 ## Characters are drawn at half size so they are in proportion to doors, furniture and trees.
 const CHAR_SCALE: float = 0.625
@@ -56,6 +57,7 @@ var last_camera: Vector2 = Vector2.INF
 var last_zoom: Vector2 = Vector2.ZERO
 var daylight: CanvasModulate
 var night: Node2D            # darkness with lamp, window and lantern pools (night_layer.gd)
+var weather_layer: Node2D    # rain, snow and fog over the people (weather_layer.gd)
 var building_rects: Array[Rect2i] = []
 var building_rects_signature: Array = []
 var atmosphere_time: float = 0.0
@@ -215,6 +217,9 @@ func _ready() -> void:
 	speech_layer.projector = self
 	speech_layer.z_index = 20
 	add_child(speech_layer)
+	weather_layer = WeatherLayer.new()
+	weather_layer.z_index = 14   # over the people, under the night
+	add_child(weather_layer)
 	night = NightLayer.new()
 	night.projector = self
 	night.z_index = 15   # over the world and the people, under the speech bubbles
@@ -225,6 +230,7 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 		return
 	var t := Time.get_ticks_usec()
 	_sync_landscape()
+	_sync_ground_weather()
 	_sync_decor(delta)
 	t = _lap("v:landscape+decor", t)
 	motion.track_trees = not is_far()
@@ -248,6 +254,8 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	# The night layer does the darkening (with light pools cut out); the tint only cools the colours.
 	daylight.color = Color("c3cbe0").lerp(Color("fff1d5"), light).darkened(overcast)
 	sun_overcast = overcast
+	weather_layer.simulation = simulation
+	weather_layer.update(view_bounds(), is_far(), _weather_amount)
 	night.simulation = simulation
 	night.update(minf(delta, 0.1), view_bounds(), overcast)
 	t = _lap("v:night", t)
@@ -300,6 +308,28 @@ func _sync_landscape() -> void:
 	landscape.material.set_shader_parameter("reedbank_center", centres[2])
 	landscape.material.set_shader_parameter("dust_center", centres[3])
 	landscape.material.set_shader_parameter("road_mask", roads.bake(state, region))
+
+## Wet ground, snow and road mud per town, for the landscape shader (set only when they change).
+var weather_uniforms: Array = []
+func _sync_ground_weather() -> void:
+	var s: Dictionary = simulation.state
+	var regions: Dictionary = s.get("weather", {}).get("regions", {})
+	var wet := Vector3.ZERO
+	var snow := Vector3.ZERO
+	var mud := Vector3.ZERO
+	for i in range(3):
+		var region: Dictionary = regions.get(str(i + 1), s.get("weather", {}) if regions.is_empty() else {})
+		if region.is_empty(): continue
+		var rain: float = _weather_amount(region, "rain")
+		wet[i] = maxf(rain, float(region.get("mud", 0)) / 100.0 * 0.6)
+		snow[i] = float(region.get("snow", 0)) / 100.0
+		mud[i] = float(region.get("mud", 0)) / 100.0
+	var signature := [snappedf(wet.x, 0.02), snappedf(wet.y, 0.02), snappedf(wet.z, 0.02), snappedf(snow.x, 0.02), snappedf(snow.y, 0.02), snappedf(snow.z, 0.02), snappedf(mud.x, 0.02), snappedf(mud.y, 0.02), snappedf(mud.z, 0.02)]
+	if signature == weather_uniforms: return
+	weather_uniforms = signature
+	landscape.material.set_shader_parameter("town_wet", wet)
+	landscape.material.set_shader_parameter("town_snow", snow)
+	landscape.material.set_shader_parameter("town_mud", mud)
 
 func snap_visuals() -> void:
 	road_buildings = -1
@@ -670,8 +700,8 @@ func draw_static(canvas: Node2D) -> void:
 		MapArt.vegetation(canvas, bounds, garden_exclusions, atmosphere_time, motion.wind_strength, roads.coverage, Terrain.town_centres(s)[3] - Vector2(0, 2))
 	var weather: Dictionary = s.get("weather", {})
 	var snow: float = float(weather.get("snow", 0)) / 100.0
-	if snow > 0.0:
-		canvas.draw_rect(bounds, Color(0.83, 0.89, 0.88, snow * 0.56))
+	if snow > 0.0:   # the ground itself turns white in the landscape shader; this pales the grass tufts
+		canvas.draw_rect(bounds, Color(0.83, 0.89, 0.88, snow * 0.35))
 	for entity in s.entities.values():
 		if not entity.has("cell") or entity.kind in ["resident", "player", "raider", "tree", "caravan", "stash"]:
 			continue
@@ -722,7 +752,6 @@ func _draw_world() -> void:
 	t = _lap("dw:combat+blood", t)
 	_draw_travel_goal(s)
 	_draw_map_labels(s)
-	_draw_weather(s, bounds)
 	_lap("dw:labels+weather", t)
 
 ## Blood left on the ground by fights (pools and flung drops that darken as they dry), a short
@@ -870,23 +899,6 @@ func _weather_amount(weather: Dictionary, kind: String) -> float:
 	if weather.is_empty(): return 0.0
 	var blend: float = clampf(float(simulation.state.tick - int(weather.get("since", 0))) / 300.0, 0.0, 1.0)
 	return (1.0 - blend if weather.get("previous", "clear") == kind else 0.0) + (blend if weather.get("kind", "clear") == kind else 0.0)
-
-func _draw_weather(s: Dictionary, bounds: Rect2) -> void:
-	var weather: Dictionary = s.get("weather", {})
-	var fog: float = _weather_amount(weather, "fog")
-	if fog > 0.0: draw_rect(bounds, Color(0.72, 0.75, 0.72, fog * 0.16))
-	var rain: float = _weather_amount(weather, "rain")
-	var snow: float = _weather_amount(weather, "snow")
-	if rain + snow <= 0.01: return
-	var count: int = 120
-	for index in range(count):
-		var x: float = fposmod(index * 97.0 + atmosphere_time * (24.0 + weather.get("wind", 25) * 0.3), bounds.size.x)
-		var y: float = fposmod(index * 157.0 + atmosphere_time * (210.0 if rain > snow else 35.0), bounds.size.y)
-		var p: Vector2 = bounds.position + Vector2(x, y)
-		if rain > snow:
-			draw_line(p, p + Vector2(-4, 13), Color(0.72, 0.81, 0.86, rain * 0.48), 1.0)
-		else:
-			draw_circle(p, 1.8, Color(0.94, 0.96, 0.94, snow * 0.75))
 
 func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D = null) -> void:
 	if canvas == null: canvas = self

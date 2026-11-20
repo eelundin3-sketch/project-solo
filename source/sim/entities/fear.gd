@@ -19,6 +19,7 @@ static func on_gunshot(sim: RefCounted, town: int, origin: Array) -> void:
 	var s: Dictionary = sim.state
 	var keys: Array = s.get("residents", {}).keys()
 	keys.sort()
+	var see: float = load("res://sim/world/weather.gd").sight(s, origin, SEE_RANGE)   # less in fog
 	for key in keys:
 		var npc: Dictionary = s.residents[key]
 		if npc.settlement != town or npc.occupation == "Sheriff" or npc.health <= 0: continue
@@ -27,7 +28,7 @@ static func on_gunshot(sim: RefCounted, town: int, origin: Array) -> void:
 		if load("res://sim/combat/brawl.gd").busy(s, npc) or not npc.get("brawl", {}).is_empty(): continue
 		if npc.occupation == "Trader" and load("res://sim/economy/traders.gd").away(s, npc): continue
 		var cell: Array = s.entities[key].cell
-		if Vector2(cell[0] - origin[0], cell[1] - origin[1]).length() > SEE_RANGE: continue
+		if Vector2(cell[0] - origin[0], cell[1] - origin[1]).length() > see: continue
 		if not Cover.line_clear(s, origin, cell): continue   # behind a wall: they did not see it
 		_scare(sim, npc, origin)
 

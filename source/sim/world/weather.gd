@@ -77,6 +77,19 @@ static func news_line(s: Dictionary, town: int) -> String:
 	if int(region.get("mud", 0)) > 50: return "The roads are thick with mud after all this rain."
 	return ""
 
+## How far people can see at `cell`, in percent of a clear day: fog cuts sight by 40%.
+## Used by witnesses (chronicle), fear, who sees a shot, and sheriffs spotting the player.
+static func sight_scale(s: Dictionary, cell: Array) -> int:
+	return 60 if kind_at(s, cell) == "fog" else 100
+
+## A sight range scaled for fog at `cell`.
+static func sight(s: Dictionary, cell: Array, full: float) -> float:
+	return full * float(sight_scale(s, cell)) / 100.0
+
+## Mud on the roads of the town a cell belongs to, 0 to 100.
+static func mud_at(s: Dictionary, cell: Array) -> int:
+	return int(at(s, cell).get("mud", 0))
+
 static func wet(kind: String) -> bool:
 	return kind == "rain" or kind == "snow"
 

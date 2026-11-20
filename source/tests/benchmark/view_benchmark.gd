@@ -21,6 +21,15 @@ func run() -> void:
 	# SOLO_BENCH_HOUR moves the clock (default 12:00): at night there are no sun shadows to draw.
 	var hour := int(OS.get_environment("SOLO_BENCH_HOUR")) if OS.get_environment("SOLO_BENCH_HOUR") != "" else 12
 	main.simulation.state.tick = hour * 600
+	# SOLO_BENCH_WEATHER (rain, snow or fog) sets that weather in every town, fully set in, with mud.
+	var weather_kind: String = OS.get_environment("SOLO_BENCH_WEATHER")
+	if weather_kind != "":
+		var w: Dictionary = main.simulation.state.weather
+		for region in w.get("regions", {}).values():
+			region.kind = weather_kind; region.previous = weather_kind; region.since = hour * 600 - 1000
+			region.mud = 80 if weather_kind == "rain" else 0
+			region.snow = 60 if weather_kind == "snow" else 0
+		w.kind = weather_kind; w.previous = weather_kind; w.since = hour * 600 - 1000
 	var camera: Camera2D = main.get_node("ObserverCamera")
 	for warm in range(90): await process_frame
 	var rows: Array = []
