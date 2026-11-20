@@ -228,4 +228,6 @@ static func news(s: Dictionary, npc: Dictionary) -> String:
 	var wanted: Dictionary = s.get("law", {}).get("wanted", {}).get(str(here), {})
 	var trouble: String = " The sheriff is looking for you, mind." if not wanted.is_empty() else ""
 	if best.is_empty(): best = "Prices are much the same everywhere just now."
+	var weather: String = load("res://sim/world/weather.gd").news_line(s, here)
+	if not weather.is_empty(): best = weather + " " + best
 	return best + trouble

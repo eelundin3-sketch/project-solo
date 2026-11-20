@@ -22,8 +22,18 @@ const LINES: Dictionary = {
 	"smalltalk": ["Looks like rain later.", "The rye's coming along nicely.", "Prices at the market are odd today.", "Did you hear? A trader's been walking the road.", "I could do with a rest.", "Timber's going quickly this week.", "My back aches from the work.", "Have you seen the sheriff about?", "The days are getting shorter.", "Bread's ready soon, I think.", "That new house is coming along.", "Strange folk, these travellers."],
 	"reply": ["Aye, I'd say so.", "Hah, you're not wrong.", "So I've heard.", "Don't get me started.", "Hmm, fair enough.", "Mm. Take care now.", "Tell me about it."],
 	"scared": ["Gunshots! Get down!", "Somebody is shooting!", "Take cover!", "Run for it!", "Oh no, oh no..."],
+	"drought": ["No rain in days. The rye's burning up.", "If it doesn't rain soon, there'll be nothing to cut.", "Dust and more dust. The fields are cracking.", "I've never seen the ground this dry."],
+	"rain_relief": ["Rain at last! The fields needed that.", "Smell that? Rain on dry ground.", "That rain came just in time.", "The rye will pick up now, thank heaven."],
 	"trader_pitch": ["Cheap planks, going east!", "Fine timber, fair prices!", "Best food on the Moss Road!"],
 }
+
+## Farmers talk about the weather when it matters: drought after 5 dry days, relief when it breaks.
+static func weather_topic(s: Dictionary, npc: Dictionary) -> String:
+	if str(npc.get("occupation", "")) != "Farmer": return "smalltalk"
+	var region: Dictionary = load("res://sim/world/weather.gd").of_town(s, int(npc.settlement))
+	if int(region.get("relief_until", 0)) > int(s.tick): return "rain_relief"
+	if int(region.get("dry_days", 0)) >= 5: return "drought"
+	return "smalltalk"
 
 static func say(sim: RefCounted, speaker: int, topic: String, extra: String = "") -> void:
 	var s: Dictionary = sim.state
@@ -64,7 +74,7 @@ static func update(sim: RefCounted) -> void:
 			if b.id <= a.id or b.settlement != a.settlement: continue
 			var cell_b: Array = s.entities[str(b.id)].cell
 			if absi(cell_a[0] - cell_b[0]) > 4 or absi(cell_a[1] - cell_b[1]) > 4: continue
-			say(sim, a.id, "smalltalk")
+			say(sim, a.id, weather_topic(s, a))
 			say(sim, b.id, "reply")
 			load("res://sim/entities/gossip.gd").chat(sim, a, b)   # and they pass on the news
 			a.talk_until = s.tick + 900

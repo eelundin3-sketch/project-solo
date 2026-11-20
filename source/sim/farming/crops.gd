@@ -2,6 +2,7 @@ extends RefCounted
 ## Rye crop growth for professional fields and household gardens. Growth is an
 ## integer count of ticks so saves, hashes and replays stay exact.
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
+const Weather = preload("res://sim/world/weather.gd")
 const CYCLE_TICKS: int = 43200          # three game days from sowing to harvest-ready
 const RIPE_WAIT_TICKS: int = 1200       # a ripe field waits about two hours for the harvest
 const YIELD_PER_CELL: int = 3
@@ -30,8 +31,20 @@ static func stage_name(plot: Dictionary) -> String:
 static func cells(plot: Dictionary) -> int:
 	return int(plot.rect[2]) * int(plot.rect[3])
 
+## Drought takes `yield_loss` off each cell's yield, but every cell still gives at least 1.
 static func expected_yield(plot: Dictionary) -> int:
-	return cells(plot) * YIELD_PER_CELL
+	return cells(plot) * maxi(1, YIELD_PER_CELL - int(plot.get("yield_loss", 0)))
+
+## How dry the plot's town has been: normal growth up to 4 dry days, half speed from 5, none from 9.
+static func dry_days(s: Dictionary, plot: Dictionary) -> int:
+	return int(Weather.of_town(s, int(plot.settlement)).get("dry_days", 0))
+
+## Growth per 10 ticks (normally 10), slowed by drought.
+static func growth_step(s: Dictionary, plot: Dictionary) -> int:
+	var dry: int = dry_days(s, plot)
+	if dry >= 9: return 0
+	if dry >= 5: return 5
+	return 10
 
 ## Registers a plot; `grown` lets the starting scenario begin mid-season.
 static func add_plot(s: Dictionary, kind: String, rect: Array, settlement: int, farm: int = 0, home: int = 0, grown: int = 0) -> String:
@@ -55,10 +68,13 @@ static func plots_for_home(s: Dictionary, home: int) -> Array:
 
 static func update(s: Dictionary) -> void:
 	if not s.has("crops") or s.tick % 10 != 0: return
+	if s.tick % Weather.DAY == 0: _daily_drought(s)
 	for plot in s.crops.values():
 		if plot.state != "growing": continue
 		if plot.grown < CYCLE_TICKS:
-			plot.grown = mini(CYCLE_TICKS, int(plot.grown) + 10)
+			var step: int = growth_step(s, plot)
+			if step <= 0: continue
+			plot.grown = mini(CYCLE_TICKS, int(plot.grown) + step)
 			if plot.grown >= CYCLE_TICKS: plot.ripe_since = s.tick
 		elif plot.kind == "field" and s.tick - int(plot.ripe_since) >= RIPE_WAIT_TICKS:
 			# A professional field is harvested by its settlement's farm crew.
@@ -74,12 +90,31 @@ static func harvest(s: Dictionary, plot: Dictionary) -> int:
 	if stage(plot) != 5: return 0
 	var owner: int = plot.farm if plot.kind == "field" else plot.home
 	if owner == 0 or not s.inventories.has(str(owner)): return 0
+	var full: int = cells(plot) * YIELD_PER_CELL
 	var amount: int = mini(expected_yield(plot), Inventory.available(s, owner))
 	if amount > 0: Inventory.produce(s, owner, "rye", amount)
 	plot.harvests += 1
+	plot.last_harvest = {"tick": s.tick, "percent": expected_yield(plot) * 100 / maxi(1, full)}
+	plot.yield_loss = 0
 	plot.grown = 0
 	plot.ripe_since = 0
 	return amount
+
+## After 9 dry days a growing crop withers: one less per cell for every 2 dry days from then on.
+static func _daily_drought(s: Dictionary) -> void:
+	for plot in s.crops.values():
+		if plot.state != "growing" or int(plot.grown) >= CYCLE_TICKS: continue
+		var dry: int = dry_days(s, plot)
+		if dry >= 9 and (dry - 9) % 2 == 0:
+			plot.yield_loss = mini(YIELD_PER_CELL - 1, int(plot.get("yield_loss", 0)) + 1)
+
+## A town whose last field harvest (within a day) came in at half or less.
+static func poor_harvest(s: Dictionary, town: int) -> bool:
+	for plot in s.get("crops", {}).values():
+		if plot.kind != "field" or int(plot.settlement) != town: continue
+		var last: Dictionary = plot.get("last_harvest", {})
+		if not last.is_empty() and s.tick - int(last.tick) <= Weather.DAY and int(last.percent) <= 50: return true
+	return false
 
 static func sow(plot: Dictionary) -> void:
 	plot.state = "growing"

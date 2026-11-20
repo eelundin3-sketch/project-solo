@@ -42,18 +42,28 @@ static func settlement_resources(s: Dictionary, settlement: int) -> Dictionary:
 	result.danger = int(s.get("routes", {}).get("1", {}).get("risk", 0))
 	return result
 
+## Percent of a town's people who farm, from its climate (used by demand and by tests).
+static func farm_share(s: Dictionary, settlement: int) -> int:
+	var rain: int = int(load("res://sim/world/weather.gd").climate(s, settlement).rain)
+	return 20 * (50 if rain < 20 else (130 if rain > 40 else 100)) / 100
+
 ## Desired head-count per profession, derived from resources and needs.
 static func demand(s: Dictionary, settlement: int) -> Dictionary:
 	var r: Dictionary = settlement_resources(s, settlement)
 	var pop: int = r.population
 	var want: Dictionary = {}
-	if r.fields > 0: want.Farmer = maxi(1, ceili(pop * 0.2))
+	# Climate: a dry town (rain under 20%) farms half as much and mines half as much again; a wet
+	# one (over 40%) farms more. The shares are percent of the population.
+	var rain: int = int(load("res://sim/world/weather.gd").climate(s, settlement).rain)
+	var farming: int = farm_share(s, settlement)
+	var mine_share: int = 15 * (150 if rain < 20 else 100) / 100
+	if r.fields > 0: want.Farmer = maxi(1, ceili(pop * farming / 100.0))
 	# Timber needs two pairs of hands in a small town, because one of them is borrowed whenever a house is built.
 	if r.trees >= 20: want.Woodsman = maxi(1, ceili(pop * 0.4))
 	if want.get("Woodsman", 0) > 0 and r.workshops.has("sawmill"): want.Sawyer = 1
 	# Households bake their own rye; a dedicated baker only pays for itself once there are six or more people.
 	if r.fields > 0 and r.workshops.has("bakery") and pop >= 6: want.Baker = 1
-	if r.ore >= 1: want.Miner = maxi(1, ceili(pop * 0.15))
+	if r.ore >= 1: want.Miner = maxi(1, ceili(pop * mine_share / 100.0))
 	if want.get("Miner", 0) > 0 and r.workshops.has("forge"): want.Blacksmith = 1
 	# Safety: a settlement large enough to have something worth stealing, or one beside a dangerous road.
 	if pop >= 3 or r.danger > 0: want.Sheriff = 1 + pop / 18

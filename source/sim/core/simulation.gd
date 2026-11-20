@@ -109,6 +109,7 @@ func start_game(population: int = 5) -> void:
 	Market.ensure_tents(self)
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # last: the roads, woods and towns are all in place
 	Light.ensure_lamps(self)
+	Weather.ensure_regions(state)   # each town its own weather, now that the towns exist
 
 func new_id() -> int:
 	var result: int = state.next_id

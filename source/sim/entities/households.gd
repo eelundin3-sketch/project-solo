@@ -164,6 +164,7 @@ static func daily(sim: RefCounted) -> void:
 	load("res://sim/entities/family_economy.gd").ensure(s)   # new families get their purse and name now
 	load("res://sim/entities/gossip.gd").daily(s)
 	load("res://sim/player/requests.gd").daily(sim)           # people ask for what they lack             # families share news; towns come to know it
+	load("res://sim/factions/society.gd").drought_moves(sim)   # farming families leave after a failed harvest
 	load("res://sim/factions/reputation.gd").update(s)        # the player's standing in each town, from what each knows
 
 static func _pair_up(sim: RefCounted, town: Dictionary) -> void:

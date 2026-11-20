@@ -57,6 +57,14 @@ static func ensure(s: Dictionary) -> void:
 			var leftover: int = int(s.accounts[account])
 			var town_key: String = String(account).substr(10).split(":")[0]
 			var town: Dictionary = s.settlements.get(town_key, {})
+			if town.is_empty():
+				# Keys like "migrant:12" do not start with a town: use the member's town, else the first.
+				var member: Dictionary = s.residents.get(String(account).get_slice(":", 2), {})
+				town = s.settlements.get(str(member.get("settlement", 0)), {})
+				if town.is_empty() and not s.settlements.is_empty():
+					var towns: Array = s.settlements.keys()
+					towns.sort()
+					town = s.settlements[towns[0]]
 			if leftover > 0 and not town.is_empty(): s.accounts[str(town.warehouse)] = int(s.accounts.get(str(town.warehouse), 0)) + leftover
 			s.accounts.erase(account)
 
