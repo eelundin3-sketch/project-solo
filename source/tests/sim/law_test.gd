@@ -2,6 +2,7 @@ extends SceneTree
 ## The sheriff's office and cell, arrests after a crime (chase, tackle, cuffs, escort, jail),
 ## being recognised later (gun drawn), surrendering, and running from a standoff.
 const Reports = preload("res://sim/law/witness_reports.gd")
+const World = preload("res://sim/world/world_db.gd")
 const Sim = preload("res://sim/core/simulation.gd")
 const Law = preload("res://sim/law/law.gd")
 const Brawl = preload("res://sim/combat/brawl.gd")
@@ -94,8 +95,21 @@ func _initialize() -> void:
 	s.player_control.jail.until = s.tick + 2
 	for t in range(4): sim.step()
 	check(not Law.jailed(s), "The sentence runs out")
-	var freed := run_until(sim, 4000, func(): return not Law.in_custody(s) and not Law.restrained(s))
+	# Release: he comes into the cell and takes you by the arm, walks you to the desk for your
+	# things, then to the door, and shoves you out into the street.
+	var seen := {}
+	var freed := -1
+	for t in range(4000):
+		sim.step()
+		for npc in s.residents.values():
+			var phase: String = str(npc.get("arrest", {}).get("phase", ""))
+			if phase != "": seen[phase + ":" + str(npc.get("arrest", {}).get("dest", ""))] = true
+		if not Law.in_custody(s) and not Law.restrained(s): freed = t; break
 	check(freed >= 0, "The sheriff lets you out")
+	check(seen.has("grab:"), "He comes into the cell to fetch you (%s)" % str(seen.keys()))
+	check(seen.has("escort:release"), "He walks you to the desk for your things")
+	check(seen.has("escort:door") and seen.has("show_out:door"), "Then he walks you to the door")
+	check(World.inside_building(s, s.entities[str(s.player)].cell) == 0, "You end up outside in the street")
 	check(s.inventories[str(s.player)].items == owned_items, "Your belongings are returned: " + str(s.inventories[str(s.player)].items))
 	check(int(s.accounts[str(s.player)]) == owned_coins, "Your coins are returned")
 	check(Outfits.worn(s, s.player) == owned_outfit, "Your own clothes are back on")
