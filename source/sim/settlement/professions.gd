@@ -57,7 +57,8 @@ static func demand(s: Dictionary, settlement: int) -> Dictionary:
 	var rain: int = int(load("res://sim/world/weather.gd").climate(s, settlement).rain)
 	var farming: int = farm_share(s, settlement)
 	var mine_share: int = 15 * (150 if rain < 20 else 100) / 100
-	if r.fields > 0: want.Farmer = maxi(1, ceili(pop * farming / 100.0))
+	# Winter: the fields lie bare, so nobody is wanted as a farmer (they cut wood or mine instead).
+	if r.fields > 0 and not winter(s): want.Farmer = maxi(1, ceili(pop * farming / 100.0))
 	# Timber needs two pairs of hands in a small town, because one of them is borrowed whenever a house is built.
 	if r.trees >= 20: want.Woodsman = maxi(1, ceili(pop * 0.4))
 	if want.get("Woodsman", 0) > 0 and r.workshops.has("sawmill"): want.Sawyer = 1
@@ -100,6 +101,34 @@ static func assign(s: Dictionary, settlement: int) -> void:
 	if s.has("settlements"):
 		load("res://sim/law/sheriff.gd").dress(s)
 		load("res://sim/economy/traders.gd").ensure(s)
+
+static func winter(s: Dictionary) -> bool:
+	return load("res://sim/world/weather.gd").season(s) == 3
+
+## On the first day of winter the farmers put down their tools and take whatever work there is
+## (wood, ore); on the first day of spring they go back to the fields. Runs from Households.daily.
+static func seasonal_work(sim: RefCounted) -> void:
+	var s: Dictionary = sim.state
+	var Weather = load("res://sim/world/weather.gd")
+	if Weather.day_of_season(s) != 0: return
+	var season: int = Weather.season(s)
+	if season != Weather.WINTER and season != Weather.SPRING: return
+	var Jobs = load("res://sim/jobs/job_board.gd")
+	var keys: Array = s.residents.keys()
+	keys.sort_custom(func(a, b) -> bool: return int(a) < int(b))
+	for key in keys:
+		var npc: Dictionary = s.residents[key]
+		if npc.get("dead", false) or npc.health <= 0: continue
+		if season == Weather.WINTER and npc.occupation == "Farmer":
+			if npc.job != 0: Jobs.release(s, npc.job, "WINTER")
+			npc.seasonal = "Farmer"
+			npc.occupation = "Gatherer"
+		elif season == Weather.SPRING and str(npc.get("seasonal", "")) == "Farmer":
+			if npc.job != 0: Jobs.release(s, npc.job, "SPRING")
+			npc.occupation = "Farmer"
+			npc.erase("seasonal")
+	if season == Weather.WINTER: sim.record("Winter: the fields lie bare and the farmers turn to wood and ore.")
+	else: sim.record("Spring: the farmers go back to their fields to sow.")
 
 static func gathers(npc: Dictionary, target_kind: String) -> bool:
 	return TARGETS.get(npc.occupation, []).has(target_kind)

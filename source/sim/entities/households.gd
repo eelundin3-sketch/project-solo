@@ -141,7 +141,7 @@ static func garden_task(s: Dictionary, npc: Dictionary) -> Dictionary:
 	var household: Dictionary = household_of(s, npc)
 	if household.is_empty(): return {}
 	for plot in Crops.plots_for_home(s, household.home):
-		if Crops.needs_attention(plot): return plot
+		if Crops.needs_attention(plot, s): return plot
 	return {}
 
 static func garden_stance(plot: Dictionary) -> Array:
@@ -156,6 +156,7 @@ static func daily(sim: RefCounted) -> void:
 		if npc.occupation == "Child" and npc.age_days >= CHILD_GROWN_DAYS:
 			npc.occupation = "Gatherer"
 			sim.record(s.entities[str(npc.id)].name + " has grown up and is ready to work.")
+	Professions.seasonal_work(sim)   # farmers to wood and ore in winter, back to the fields in spring
 	for town in s.settlements.values():
 		Professions.assign(s, town.id)
 		load("res://sim/law/sheriff.gd").ensure(sim)
