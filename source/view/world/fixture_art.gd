@@ -8,6 +8,33 @@ static func item(c: Node2D, p: Vector2, kind: String) -> void:
 		"plank": Props.plank(c, p + Vector2(-13, 0), p + Vector2(13, -1))
 		_: Props.supply(c, p, kind)
 
+## The flue of an oven or forge: an iron pipe from the top of the stove up through the building's
+## back wall, with a capped stack outside. While the stove is working, smoke rises from the stack,
+## outside the wall, drifting and fading. `base` is where the pipe leaves the stove.
+static func flue(c: Node2D, entity: Dictionary, base: Vector2, phase: float, active: bool, heaviness: float) -> void:
+	var rect: Rect2i = load("res://sim/world/world_db.gd").building_rect(entity)
+	var wall_outer: float = float(rect.position.y) * 24.0 - 12.0           # the outer face of the back wall
+	var top: float = minf(base.y - 20.0, wall_outer - 18.0)                 # the stack stands clear of the wall
+	var pipe := Color("3f3c36")
+	var shine := Color("6f6c63")
+	c.draw_line(base, Vector2(base.x, top), pipe, 6.0, true)
+	c.draw_line(base + Vector2(-1.5, 0), Vector2(base.x - 1.5, top), shine, 1.2, true)
+	# A collar where the pipe passes through the wall, and the stack's cap outside.
+	c.draw_rect(Rect2(Vector2(base.x - 6, wall_outer - 4), Vector2(12, 5)), Color("2e2b27"))
+	c.draw_rect(Rect2(Vector2(base.x - 7, top - 5), Vector2(14, 4)), pipe)
+	c.draw_rect(Rect2(Vector2(base.x - 5, top - 9), Vector2(10, 4)), Color("2e2b27"))
+	if not active: return
+	# Smoke: puffs leave the stack, rise, swell, drift with the wind side and thin out.
+	var puffs: int = 7
+	for i in range(puffs):
+		var age: float = fmod(phase * 0.035 + float(i) / float(puffs), 1.0)
+		var rise: float = age * 70.0 * heaviness
+		var drift: float = sin(age * 3.0 + float(i)) * 4.0 + age * 14.0
+		var radius: float = 3.5 + age * 11.0 * heaviness
+		var alpha: float = (1.0 - age) * 0.42 * heaviness
+		var grey: float = 0.55 + age * 0.25
+		c.draw_circle(Vector2(base.x + drift, top - 10.0 - rise), radius, Color(grey, grey, grey * 0.98, alpha))
+
 ## The three goods a workshop's storage rack labels, by trade.
 static func stock_kinds(entity: Dictionary) -> Array:
 	match entity.get("kind", ""):
@@ -45,8 +72,10 @@ static func paint(c: Node2D, entity: Dictionary, stock: Dictionary, phase: float
 		Furniture.weapon_rack(c, p, int(stock.get("rifle", 0)) + int(stock.get("shotgun", 0)), int(stock.get("cartridge", 0)) + int(stock.get("shell", 0)))
 	elif fixture.kind == "oven":
 		Furniture.oven(c, p, phase, active, int(stock.get("rye", 0)), int(stock.get("food", 0)))
+		flue(c, entity, p + Vector2(46, 4), phase, active, 0.8)
 	elif fixture.kind == "forge":
 		Furniture.forge(c, p, phase, active)
+		flue(c, entity, p + Vector2(42, 8), phase, active, 1.0)
 	elif fixture.kind == "stall":
 		draw_stall(c, entity, p, stock)
 	elif entity.kind == "construction":
