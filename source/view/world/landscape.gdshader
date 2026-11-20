@@ -11,6 +11,8 @@ uniform vec2 dust_center = vec2(122.0, 128.0);
 uniform vec3 town_wet = vec3(0.0);
 uniform vec3 town_snow = vec3(0.0);
 uniform vec3 town_mud = vec3(0.0);
+// How much of each season shows (spring, summer, autumn, winter); sums to 1.
+uniform vec4 season_weights = vec4(0.0, 1.0, 0.0, 0.0);
 varying vec2 land;
 
 void vertex() {
@@ -64,6 +66,12 @@ void fragment() {
 	float green = field(warped * 0.42) * 0.65 + undergrowth * 0.24 + ground_grain * 0.11;
 	vec3 fern = mix(vec3(0.02, 0.085, 0.06), vec3(0.11, 0.24, 0.16), green);
 	fern = mix(fern, vec3(0.34, 0.33, 0.17), dust * 0.75);  // scrub looks olive and dry here
+	// The seasons: fresh green in spring, deep green in summer, rust in autumn, dull in winter.
+	vec3 fern_spring = fern * vec3(1.06, 1.22, 0.90) + vec3(0.01, 0.025, 0.0);
+	vec3 fern_autumn = mix(fern, vec3(0.33, 0.19, 0.07), 0.45);
+	vec3 fern_winter = mix(fern, vec3(0.17, 0.15, 0.12), 0.55);
+	fern = fern_spring * season_weights.x + fern * season_weights.y + fern_autumn * season_weights.z + fern_winter * season_weights.w;
+	loam = mix(loam, loam * vec3(0.90, 0.92, 0.96), season_weights.w);
 	vec3 color = mix(loam, fern, woodland);
 	float grid_distance = min(fract(land.x + 0.5), fract(land.y + 0.5));
 	float grid = (1.0 - smoothstep(0.0, 0.04, grid_distance)) * (1.0 - smoothstep(0.05, 0.12, fwidth(land.x)));

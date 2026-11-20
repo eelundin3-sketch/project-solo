@@ -231,6 +231,7 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	var t := Time.get_ticks_usec()
 	_sync_landscape()
 	_sync_ground_weather()
+	_sync_season()
 	_sync_decor(delta)
 	t = _lap("v:landscape+decor", t)
 	motion.track_trees = not is_far()
@@ -308,6 +309,27 @@ func _sync_landscape() -> void:
 	landscape.material.set_shader_parameter("reedbank_center", centres[2])
 	landscape.material.set_shader_parameter("dust_center", centres[3])
 	landscape.material.set_shader_parameter("road_mask", roads.bake(state, region))
+
+## The season shown, blended over the first day of each season: landscape colours, trees, grass.
+var season_key: Array = []
+func _sync_season() -> void:
+	var tick: int = int(simulation.state.tick)
+	var season_ticks: int = 14400 * 7
+	var season: int = (tick / season_ticks) % 4
+	var into: float = clampf(float(tick % season_ticks) / 14400.0, 0.0, 1.0)
+	var key := [season, snappedf(into, 0.05)]
+	if key == season_key: return
+	season_key = key
+	MapArt.season = season
+	MapArt.previous_season = (season + 3) % 4
+	MapArt.season_blend = into
+	var weights := [0.0, 0.0, 0.0, 0.0]
+	weights[(season + 3) % 4] += 1.0 - into
+	weights[season] += into
+	landscape.material.set_shader_parameter("season_weights", Vector4(weights[0], weights[1], weights[2], weights[3]))
+	background.queue_redraw()
+	for node in depth_objects.values():
+		if node.object_kind == "tree": node.queue_redraw()
 
 ## Wet ground, snow and road mud per town, for the landscape shader (set only when they change).
 var weather_uniforms: Array = []

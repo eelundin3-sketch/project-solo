@@ -8,6 +8,26 @@ const Furniture = preload("res://view/world/interior_art.gd")
 const FLOOR = preload("res://content/art/floor.svg")
 const INK := Color("30291e")
 const Character = preload("res://view/actors/frontier_character.gd")
+## The season shown (0 spring .. 3 winter) and how far into it (0..1 over its first day), set by
+## the world view each frame from the clock. Trees and grass tufts take their colours from it.
+static var season: int = 1
+static var previous_season: int = 0
+static var season_blend: float = 1.0
+const SEASON_LEAVES := [Color(1.05, 1.12, 0.78), Color.WHITE, Color(1.0, 0.84, 0.40), Color(0.80, 0.86, 0.82)]
+
+## The leaf colour for this moment of the year, blended over the first day of a season.
+static func season_leaves() -> Color:
+	return SEASON_LEAVES[previous_season].lerp(SEASON_LEAVES[season], season_blend)
+
+## Most trees drop their leaves in winter; one in three is evergreen.
+static func bare_in_winter(id: int) -> bool:
+	return season == 3 and season_blend >= 0.5 and posmod(id, 3) != 0
+
+## Grass tufts follow the season: fresh in spring, gold-brown in autumn, dull in winter.
+static func season_grass(color: Color) -> Color:
+	var tints := [Color(0.92, 1.06, 0.82), Color.WHITE, Color(1.25, 0.95, 0.55), Color(0.85, 0.82, 0.78)]
+	return color * Color(tints[previous_season]).lerp(tints[season], season_blend)
+
 static func box(c: Node2D, r: Rect2, color: Color, border: float = 2.0) -> void:
 	c.draw_rect(r, color)
 	c.draw_rect(r, INK, false, border)
@@ -74,12 +94,14 @@ static func tree(c: Node2D, p: Vector2, logs: int, id: int, pose: Dictionary = {
 
 ## Dry-country trees: bare dead trunks, and a few trees still holding autumn-coloured leaves.
 static func _tree_texture(id: int, pose: Dictionary) -> Texture2D:
-	return DEAD_TREES[posmod(id, 2)] if pose.get("dead", false) else TREES[posmod(id, 4)]
+	return DEAD_TREES[posmod(id, 2)] if pose.get("dead", false) or bare_in_winter(id) else TREES[posmod(id, 4)]
 
 static func _tree_tint(id: int, pose: Dictionary) -> Color:
-	if pose.get("dead", false): return Color.WHITE
+	if pose.get("dead", false) or bare_in_winter(id): return Color.WHITE
 	if pose.get("autumn", false): return Color(1.0, 0.82, 0.36).lerp(Color(1.0, 0.7, 0.3), float(posmod(id * 7, 5)) / 8.0)
-	return Color("d7e5c9").lerp(Color.WHITE, float(posmod(id * 13, 17)) / 24.0)
+	var leaves: Color = season_leaves()
+	if season == 2: leaves = leaves.lerp(Color(1.0, 0.70, 0.30), float(posmod(id * 7, 5)) / 6.0)   # autumn: each tree its own shade
+	return Color("d7e5c9").lerp(Color.WHITE, float(posmod(id * 13, 17)) / 24.0) * leaves
 
 static func _stump(c: Node2D, p: Vector2) -> void:
 	box(c, Rect2(p - Vector2(7, 10), Vector2(14, 12)), Color("83623c"))
@@ -572,7 +594,7 @@ static func vegetation(c: Node2D, bounds: Rect2, buildings: Array, wind_phase: f
 			if intersects: continue
 			var base := cell_rect.position + Vector2(6 + hash_value % 9, 17)
 			if road_coverage.is_valid() and road_coverage.call(base) > 0.53: continue
-			var shade: Color = Color("355a33") if hash_value % 2 == 0 else Color("53723e")
+			var shade: Color = season_grass(Color("355a33") if hash_value % 2 == 0 else Color("53723e"))
 			if Vector2(float(x) - dry_center.x, (float(y) - dry_center.y) * 1.2).length() < 46.0: shade = Color("8a7448") if hash_value % 2 == 0 else Color("a38b57")  # dry grass around Dustvale
 			var sway: float = sin(wind_phase + float(x) * 0.19 + float(y) * 0.13) * wind_strength * 2.0
 			c.draw_line(base, base + Vector2(-2 + sway, -6), shade, 1.4, true)
