@@ -109,9 +109,9 @@ func start_game(population: int = 5) -> void:
 	Households.upgrade(self)
 	FamilyEconomy.ensure(state)
 	Chests.ensure_all(self)
+	Capital.ensure(self)   # Dustvale, the capital: the town house, the governor, the saloon and its barkeep (before the woods, which keep clear of buildings)
 	World.lay_out_woodlands(self)
 	for town in state.settlements.values(): Professions.assign(state, town.id)
-	Capital.ensure(self)   # Dustvale, the capital: the town house, the governor, the saloon and its barkeep
 	Sheriff.ensure(self)
 	Market.ensure_tents(self)
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # last: the roads, woods and towns are all in place
