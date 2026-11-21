@@ -48,7 +48,10 @@ func _initialize() -> void:
 	Inventory.produce(s, s.player, "shotgun", 1); Inventory.produce(s, s.player, "shell", 40)
 	s.shotgun.equipped = true; s.shotgun.loaded = 5; s.shotgun.last_shot = -1000
 	var lead: Dictionary = sheriffs[0]
-	for other in sheriffs.slice(1): s.entities[str(other.id)].cell = [store[0] + 60, store[1] - 40]   # out of earshot
+	var away := 0
+	for other in sheriffs.slice(1):   # out of earshot, each on a cell of their own
+		s.entities[str(other.id)].cell = [store[0] + 60 + away * 2, store[1] - 40]
+		away += 1
 	# Put the sheriff at the farthest cover within shooting range of the player.
 	var far_cover: Array = []
 	var far_distance := 0.0
@@ -68,6 +71,7 @@ func _initialize() -> void:
 	var last_cell: Array = s.entities[str(lead.id)].cell.duplicate()
 	var steps_in_window := 0
 	var lead_wounded := false
+	var closest: float = start_distance
 	for i in range(900):
 		# Keep the fight going, but leave quiet spells for the sheriff to move in.
 		if i % 60 == 0:
@@ -80,6 +84,7 @@ func _initialize() -> void:
 		if not alert.is_empty() and alert.get("phase", "") == "arrest": alert.phase = "engage"; alert.last_shot = s.tick
 		sim.step()
 		var now: Array = s.entities[str(lead.id)].cell
+		closest = minf(closest, Vector2(now[0] - player[0], now[1] - player[1]).length())
 		if now != last_cell and str(lead.get("cover_cycle", {}).get("phase", "")) == "advance":
 			steps_in_window += 1
 			if str(lead.get("cover_cycle", {}).get("phase", "")) == "advance" and s.tick - int(Gunfire.alert_of(s, 1).get("last_shot", -1000)) < Gunfire.SAFE_AFTER_SHOT and not bool(s.shotgun.get("reloading", false)): moved_while_firing = true
@@ -94,7 +99,9 @@ func _initialize() -> void:
 			lead_wounded = true
 	var end_distance: float = Vector2(s.entities[str(lead.id)].cell[0] - player[0], s.entities[str(lead.id)].cell[1] - player[1]).length()
 	check(advanced, "The sheriff moves up from cover to cover")
-	check(end_distance < start_distance, "...and ends up closer (%.1f -> %.1f cells)" % [start_distance, end_distance])
+	# He closes in from cover; where he stands at the very end depends on the scripted lulls (with
+	# three sheriffs to a town he may be back at cover by then), so the check is how close he got.
+	check(closest < start_distance - 2.0, "...and closes in on you (%.1f -> %.1f cells at the closest)" % [start_distance, closest])
 	check(max_step_rate <= 11, "...slowly, at most a step every third tick (%d steps in 30 ticks)" % max_step_rate)
 	check(not moved_while_firing, "...never while the gunman is firing")
 	check(lead_wounded and not Bleeding.bleeding(lead), "A wounded sheriff bandages himself behind cover")

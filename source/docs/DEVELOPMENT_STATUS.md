@@ -63,6 +63,11 @@ Big-push order when the owner asks: **PR #13 first**, then the feature branches 
 | **Seasons and harvest**; seasonal colours | `crops.gd`, `professions.gd`, `world_view.gd` | `seasons_test`, `season_soak_test`, `season_capture` |
 | **Price trends** and prices known in other towns | `market.gd`, `trade_window.gd` | `price_trend_test`, `trade_capture` |
 | **Four parts of the day**, sun path and shadows, own bedtimes, 15-day seasons, summer start at 07:00 | `sim/world/day_clock.gd` | `day_clock_test`, `shadow_capture` |
+| **Winter stores** (rye reaches the baker; storehouses lay up food) | `job_board.gd`, `recipe_system.gd` | `season_soak_test` |
+| **Smoke** from oven and forge, through a flue in the back wall | `view/world/fixture_art.gd` | `smoke_capture` |
+| **Jail release**: fetched from the cell, things returned, walked to the door, shoved out | `sim/law/law.gd` | `law_test` |
+| **Bandit camp**: demand, robbery, captivity and escape, fights, cleared camp and reward | `sim/factions/bandits.gd` | `bandits_test`, `bandit_capture` |
+| **Dustvale the capital**: 3 sheriffs per town (5 there), governor's town house, saloon and barkeep, drinks | `sim/settlement/capital.gd` | `dustvale_capital_test`, `capital_capture` |
 
 ## 3. Partly implemented (exact gaps)
 

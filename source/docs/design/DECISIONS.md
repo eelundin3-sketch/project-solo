@@ -563,3 +563,46 @@ is still day 1 at midnight and day numbers stay right. `start_game` sets the
 tick to 4,200 (07:00); `start_village` (bare test worlds) keeps tick 0. Saves
 made before this keep their tick and so may find themselves in a different
 season.
+
+## 2026-11-21: Winter stores, smoke, the jail release, the bandit camp, and Dustvale as capital
+
+**Winter stores [owner chose "store up in autumn"].** With 15-day winters the
+towns starved (up to 70% near starving). The cause was rye: it piled up at the
+farms because carriers took a farm's food first, the storehouse stopped taking
+an item at 200, and the baker stopped at 300 bread. Now carriers take whichever
+of food or rye the storehouse has less of, the storehouse lays up 800 of each,
+and the baker bakes up to 800. The winter soak shows at worst 4%.
+
+**Smoke goes outside [owner].** The bakery oven's and the forge's flue runs up
+through the building's back wall to a stack outside, and smoke rises there
+only while the stove works. View only.
+
+**Shown out of jail [owner].** On release the sheriff comes into the cell and
+takes the prisoner by the arm, returns their things at the desk, walks them to
+the door and shoves them into the street. New phases `grab` and `show_out` in
+`law.gd`.
+
+**The bandit camp [owner; captivity and reward chosen by the owner].** Three
+bandits are residents with no town (settlement 0, occupation "Bandit"), so the
+town systems pass them by and `bandits.gd` runs them. The camp is placed as far
+from every town as the map allows. They demand your coins and gun; surrender
+hands them over, then they either let you go or tie you up at the camp (50%,
+stream "bandits"). Refusing, running or hurting one starts a fight (they shoot
+with `Gunfire.fire_at_player`). Going down or surrendering means robbery and
+captivity. You slip free once they all sleep (after two hours at least), or
+after a day. Beating them leaves their loot pile and the leader's purse to you
+and records `bandits_cleared`, which every town hears (+25 reputation). Crimes
+against outlaws are not crimes (`Law.crime` ignores town 0 and bandit victims).
+Only full games get a camp (not bare test worlds).
+
+**Dustvale is the capital [owner].** Three sheriffs per town, five in the
+capital (`Capital.sheriffs_wanted`); a second sheriff with the same surname
+keeps his first name, so names stay unique. Two new building kinds, `town_hall`
+and `saloon`, and the building kinds are now one shared list,
+`World.BUILDING_KINDS`. The Governor lives in the town house and works at his
+desk 08:00-16:00. The barkeep lives at the saloon and tends the bar
+14:00-23:00, keeping later hours (bed 23-00, up 08-09). Neither pairs off or
+moves house. Townsfolk drop in 18:00-21:00 (30% once a day), and the player
+can buy a drink (3 coins to the barkeep: thirst and mood). Dustvale's office
+keeps its two sheriff beds: five sheriffs share them in shifts (there is no
+room for a third bed beside the rack).
