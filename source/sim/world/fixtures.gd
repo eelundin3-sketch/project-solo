@@ -74,6 +74,37 @@ static func install(s: Dictionary, building: Dictionary) -> void:
 					{"kind": "shelf", "rect": [left+1, top+1, 3, 2]},
 					{"kind": "chest", "rect": [left+1, top+4, 2, 1]},
 				]
+			"saloon":
+				# The back room is the barkeep's (bed, stores); the bar room has the counter along the
+				# back wall with the bottles behind it, and two tables with chairs.
+				building.furniture = [
+					{"kind": "bed", "rect": [left+1, top+1, 2, 3], "rot": 0},
+					{"kind": "shelf", "rect": [left+1, top+5, 3, 2]},
+					{"kind": "chest", "rect": [left+1, top+8, 2, 1], "rot": 2},
+					{"kind": "bar_counter", "rect": [left+7, top+3, 6, 1], "rot": 2},
+					# Two tables with a clear lane between them from the door up to the bar, and the gap in
+					# the partition (to the back room) left open.
+					{"kind": "table", "rect": [left+7, top+6, 2, 2], "rot": 2},
+					{"kind": "chair", "rect": [left+9, top+6, 1, 1], "rot": 3},
+					{"kind": "chair", "rect": [left+7, top+8, 1, 1], "rot": 0},
+					{"kind": "table", "rect": [left+11, top+6, 2, 2], "rot": 2},
+					{"kind": "chair", "rect": [left+13, top+6, 1, 1], "rot": 1},
+					{"kind": "chair", "rect": [left+11, top+8, 1, 1], "rot": 0},
+					{"kind": "lamp", "rect": [left+6, top+1, 1, 1], "rot": 2},
+					{"kind": "lamp", "rect": [right-2, top+1, 1, 1], "rot": 2},
+				]
+			"town_hall":
+				# The governor's rooms: bed and chest behind the partition; his desk (and the chair he
+				# works in) in the main room, with a shelf of ledgers and a table for callers.
+				building.furniture = [
+					{"kind": "chair", "rect": [left+10, top+2, 1, 1], "rot": 0},
+					{"kind": "writing_desk", "rect": [left+9, top+3, 3, 2], "rot": 2},
+					{"kind": "bed", "rect": [left+1, top+1, 2, 3], "rot": 0},
+					{"kind": "chest", "rect": [left+1, top+5, 2, 1], "rot": 2},
+					{"kind": "shelf", "rect": [left+6, top+1, 3, 2]},
+					{"kind": "table", "rect": [left+7, top+7, 2, 2], "rot": 2},
+					{"kind": "lamp", "rect": [right-2, top+1, 1, 1], "rot": 2},
+				]
 	for item in building.fixtures: _occupy(s, item.rect, building.id)
 	for item in building.furniture: _occupy(s, item.rect, building.id)
 	if expanded and building.kind == "home":

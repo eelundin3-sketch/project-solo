@@ -1,5 +1,6 @@
 extends RefCounted
 const DayClock = preload("res://sim/world/day_clock.gd")
+const Capital = preload("res://sim/settlement/capital.gd")
 const World = preload("res://sim/world/world_db.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
 const Jobs = preload("res://sim/jobs/job_board.gd")
@@ -130,6 +131,8 @@ static func _decide(sim: RefCounted, npc: Dictionary) -> void:
 		return
 	if cargo(s, npc) > 0:
 		set_goal(s, npc, "deposit")
+	elif Capital.routine(sim, npc):
+		pass   # the capital's governor, barkeep and evening drinkers (capital.gd)
 	elif Professions.GATHERERS.has(npc.occupation):
 		Jobs.assign(s, npc.id)
 	elif npc.occupation == "Sheriff" and s.has("settlements"):
@@ -195,6 +198,12 @@ static func _need_action(sim: RefCounted, npc: Dictionary) -> void:
 	match npc.goal:
 		"desk":
 			Sheriff.sit(s, npc)
+		"seat":
+			Capital.sit(s, npc)
+		"bar":
+			npc.goal = ""
+			npc.status = "Tending the bar"
+			npc.work_pause_until = s.tick + 200
 		"patrol":
 			npc.goal = ""
 			npc.status = "On patrol, watching the square"

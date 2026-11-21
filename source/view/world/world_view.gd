@@ -534,7 +534,7 @@ func _rebuild_building_items(s: Dictionary) -> void:
 		# Doors: one in every outside doorway and one in every passage between rooms.
 		var doors: Array = []
 		var out := Vector2(Orient.outward(int(entity.get("door_side", 2))))
-		doors.append({"suffix": "out", "cells": [entity.door], "axis": "h" if absf(out.y) > 0.5 else "v", "inward": -out, "style": "heavy" if entity.kind in ["office", "warehouse", "market", "sawmill", "bakery", "forge"] else "plank", "double": false})
+		doors.append({"suffix": "out", "cells": [entity.door], "axis": "h" if absf(out.y) > 0.5 else "v", "inward": -out, "style": "heavy" if entity.kind in ["office", "warehouse", "market", "sawmill", "bakery", "forge", "saloon", "town_hall"] else "plank", "double": false})
 		var gap_index := 0
 		# The office's inner gap is the jail cell: its iron door is drawn with the building
 		# (open or shut with cell_open), so it gets no wooden door that swings for passers-by.
@@ -968,7 +968,7 @@ func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D 
 			_name_tag(canvas, p, entity.name, Color("ffe9a8"))
 		"farm":
 			if Crops.plot_for_farm(s, entity.id).is_empty(): MapArt.farm(canvas, p, s.inventories[str(entity.id)].items.get("food", 0))
-		"warehouse", "home", "sawmill", "bakery", "forge", "office", "market":
+		"warehouse", "home", "sawmill", "bakery", "forge", "office", "market", "saloon", "town_hall":
 			var footprint := World.building_rect(entity)
 			var rect := Rect2(Vector2(footprint.position) * CELL - Vector2.ONE * CELL / 2, Vector2(footprint.size) * CELL)
 			# Floors and frontage are painted once into a cached texture (see _sync_decor).
@@ -1266,7 +1266,7 @@ func _sync_decor(delta: float) -> void:
 		var square: Array = s.entities[str(settlement.warehouse)].cell
 		wanted["plaza:%d" % settlement.id] = ["plaza", int(settlement.id), str(settlement.get("stalls", [])), Rect2(Vector2(square[0], square[1] + 7) * CELL + Vector2(-520, -110), Vector2(1040, 330))]
 	for entity in s.entities.values():
-		if entity.has("footprint") and entity.kind in ["warehouse", "home", "sawmill", "bakery", "forge", "office", "market"]:
+		if entity.has("footprint") and entity.kind in World.BUILDING_KINDS:
 			var fp := World.building_rect(entity)
 			var rect := Rect2(Vector2(fp.position) * CELL - Vector2.ONE * CELL / 2, Vector2(fp.size) * CELL)
 			wanted["building:%d" % entity.id] = ["building", int(entity.id), "%s:%s:%s:%s" % [entity.kind, str(entity.footprint), str(entity.get("door", [])), str(entity.get("cell_open", false))], rect.grow(48)]

@@ -55,7 +55,7 @@ static func _street_extent(s: Dictionary, town: int) -> Array:
 	var hi: int = -100000
 	for entity in s.entities.values():
 		if entity.get("settlement", 0) != town or not entity.has("footprint"): continue
-		if entity.kind not in ["warehouse", "office", "market", "sawmill", "bakery", "forge"] and not (entity.kind == "home" and "lodge" in str(entity.name).to_lower()): continue
+		if entity.kind not in ["warehouse", "office", "market", "sawmill", "bakery", "forge", "saloon", "town_hall"] and not (entity.kind == "home" and "lodge" in str(entity.name).to_lower()): continue
 		var rect := World.building_rect(entity)
 		lo = mini(lo, rect.position.x)
 		hi = maxi(hi, rect.end.x)

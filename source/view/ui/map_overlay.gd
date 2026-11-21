@@ -8,6 +8,8 @@ const CELL := 24.0
 const BOTTOM_MARGIN := 150.0          # keeps labels clear of the hotbar and buttons
 const KINDS := {
 	"office": {"label": "Sheriff", "color": Color("d9b44a"), "glyph": "S"},
+	"saloon": {"label": "Saloon", "color": Color("c46a4a"), "glyph": "B"},
+	"town_hall": {"label": "Town house", "color": Color("d8c27a"), "glyph": "T"},
 	"home_lodge": {"label": "Lodge", "color": Color("9cc4d9"), "glyph": "L"},
 	"warehouse": {"label": "Storehouse", "color": Color("c98b4a"), "glyph": "G"},
 	"sawmill": {"label": "Sawmill", "color": Color("b6845a"), "glyph": "W"},

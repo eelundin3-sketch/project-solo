@@ -55,10 +55,13 @@ static func daylight(s: Dictionary) -> int:
 	return daylight_at(minute(s))
 
 ## A person's own bedtime and waking time, in minutes of the day.
+## The barkeep keeps later hours: to bed 23:00-00:00, up 08:00-09:00.
 static func bedtime(npc: Dictionary) -> int:
+	if str(npc.get("occupation", "")) == "Barkeep": return 1380 + posmod(int(npc.get("id", 0)) * 37, SPREAD)
 	return BED_FROM + posmod(int(npc.get("id", 0)) * 37, SPREAD)
 
 static func wake_time(npc: Dictionary) -> int:
+	if str(npc.get("occupation", "")) == "Barkeep": return 480 + posmod(int(npc.get("id", 0)) * 23 + 11, SPREAD)
 	return WAKE_FROM + posmod(int(npc.get("id", 0)) * 23 + 11, SPREAD)
 
 ## Past this person's bedtime and before their waking time: the hours they want to be in bed.

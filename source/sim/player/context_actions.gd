@@ -102,6 +102,9 @@ static func options(s: Dictionary, id: int, part: String = "") -> Array:
 					result.append(_opt("kick", "Kick (1.5× a punch)", "fist"))
 			else:
 				result.append(_opt("talk", "Talk", "talk"))
+				if npc.occupation == "Barkeep":
+					var Capital = load("res://sim/settlement/capital.gd")
+					result.append(_opt("buy_drink", "Buy a drink (%d c)" % Capital.DRINK_PRICE, "bag", Capital.serving(s, npc), "The bar isn't open"))
 				if npc.occupation not in ["Sheriff", "Child"]: result.append(_opt("trade", "Trade", "bag"))
 				result.append(_opt("ask_family", "Ask about their family", "talk"))
 				result.append(_opt("ask_news", "Ask for news", "talk"))
@@ -309,6 +312,7 @@ static func perform(sim: RefCounted, id: int, action: String, part: String = "")
 		return
 	match action:
 		"examine": pc.notice = describe(s, id, part)
+		"buy_drink": pc.notice = load("res://sim/settlement/capital.gd").buy_drink(s, s.residents.get(str(id), {}))
 		"sleep": Sleep.lie_down(s, id, part_index(part))
 		"eat": pc.notice = Needs.eat(s)
 		"drink": pc.notice = Needs.drink(s)

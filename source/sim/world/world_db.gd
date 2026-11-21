@@ -61,6 +61,10 @@ static func apply_mutation(state: Dictionary, cell: Array, blocked: bool) -> voi
 		state.world.chunks[key] = {"seed": state.seed, "version": 1, "entities": [], "mutations": {}}
 	state.world.chunks[key].mutations[cell_key(cell)] = blocked
 
+## Every kind of finished building with walls, a footprint and fittings. One list, so adding a new
+## kind of building (the saloon, the town house) is one line here plus its fittings and art.
+const BUILDING_KINDS: Array[String] = ["home", "warehouse", "sawmill", "bakery", "forge", "office", "market", "saloon", "town_hall"]
+
 static func add_entity(sim: RefCounted, kind: String, name_value: String, cell: Array, settlement: int = 0, extra: Dictionary = {}) -> int:
 	var id: int = sim.new_id()
 	entity_serial += 1
@@ -69,7 +73,7 @@ static func add_entity(sim: RefCounted, kind: String, name_value: String, cell: 
 		# street is not one straight row. Only backwards: the road in front always stays clear.
 		cell = [cell[0], cell[1] - sim.random_int("town_layout:%d" % settlement, 0, 5)]
 	sim.state.entities[str(id)] = {"id": id, "kind": kind, "name": name_value, "cell": cell.duplicate(), "settlement": settlement}
-	if kind in ["home", "warehouse", "sawmill", "bakery", "forge", "office", "market", "construction"]:
+	if kind in BUILDING_KINDS or kind == "construction":
 		sim.state.entities[str(id)].building_scale = 2
 	if kind == "home": sim.state.entities[str(id)].layout_shape = "stepped_joined"
 	# House types (see housing.gd) carry their own size, shape, beds and style.
@@ -79,7 +83,7 @@ static func add_entity(sim: RefCounted, kind: String, name_value: String, cell: 
 	if not sim.state.world.chunks.has(key):
 		sim.state.world.chunks[key] = {"seed": sim.state.seed, "version": 1, "entities": [], "mutations": {}}
 	sim.state.world.chunks[key].entities.append(id)
-	if kind in ["home", "warehouse", "sawmill", "bakery", "forge", "office", "market"]:
+	if kind in BUILDING_KINDS:
 		install_building(sim.state, id)
 	elif kind in ["construction", "market_stall"]:
 		Fixtures.install(sim.state, sim.state.entities[str(id)])
@@ -341,7 +345,7 @@ static func upgrade_layouts(s: Dictionary) -> void:
 	s.world.building_walls = {}
 	s.world.fixture_cells = {}
 	for entity in s.entities.values():
-		if entity.get("kind", "") in ["home", "warehouse", "sawmill", "bakery", "forge", "office", "market"]:
+		if entity.get("kind", "") in BUILDING_KINDS:
 			# Earlier icons sat too close together for full-sized rooms.
 			if s.has("settlements") and s.settlements.has(str(entity.settlement)):
 				var store: Array = s.entities[str(s.settlements[str(entity.settlement)].warehouse)].cell
@@ -587,7 +591,7 @@ static func _woodland_keep_out(s: Dictionary) -> Dictionary:
 			elif side == 1: yard = Rect2i(door[0] - 1, door[1] - 3, 10, 7)
 			elif side == 3: yard = Rect2i(door[0] - 8, door[1] - 3, 10, 7)
 			areas.append(yard)
-		elif entity.get("kind", "") in ["market_stall", "chest", "ore", "farm", "warehouse", "market", "office", "home", "sawmill", "bakery", "forge"]:
+		elif entity.get("kind", "") in ["market_stall", "chest", "ore", "farm"] + BUILDING_KINDS:
 			areas.append(Rect2i(entity.cell[0] - 4, entity.cell[1] - 4, 9, 9))
 		if entity.has("rock_rect"):
 			var r: Array = entity.rock_rect

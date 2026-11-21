@@ -173,7 +173,8 @@ static func _pair_up(sim: RefCounted, town: Dictionary) -> void:
 	var s: Dictionary = sim.state
 	var singles: Array = []
 	for npc in s.residents.values():
-		if npc.settlement == town.id and npc.partner == 0 and npc.occupation != "Child" and npc.health > 0 and npc.get("migration", {}).is_empty() and int(npc.age_days) >= 16:
+		# The governor and the barkeep live where they work (capital.gd): they don't move in with anyone.
+		if npc.settlement == town.id and npc.partner == 0 and npc.occupation not in ["Child", "Governor", "Barkeep"] and npc.health > 0 and npc.get("migration", {}).is_empty() and int(npc.age_days) >= 16:
 			singles.append(npc.id)
 	singles.sort()
 	# Each adult wants a family: partners are drawn in id order, with some chance each day.

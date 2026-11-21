@@ -36,7 +36,7 @@ static func target(s: Dictionary, preferred: int = 0) -> int:
 		var e: Dictionary=s.entities.get(str(id),{})
 		if e.is_empty() or not e.has("cell"): continue
 		if e.get("kind","")=="stash" and Inventory.used(s.inventories.get(str(e.id),{"items":{},"capacity":1,"reserved":{}}))==0: continue
-		if e.id==s.player or e.get("kind","") not in ["sawmill","bakery","forge","office","warehouse","market","market_stall","construction","stash","resident","tree","farm","ore","chest"] or not near(s,e): continue
+		if e.id==s.player or e.get("kind","") not in ["sawmill","bakery","forge","office","warehouse","market","saloon","town_hall","market_stall","construction","stash","resident","tree","farm","ore","chest"] or not near(s,e): continue
 		var candidate: int=distance(s.entities[str(s.player)].cell,World.Fixtures.interaction_cell(s,e.id))*10
 		candidate+=0 if e.kind in ["sawmill","warehouse","market","market_stall","stash"] else (3 if e.kind=="resident" else 5)
 		if candidate<score: score=candidate; found=e.id

@@ -13,7 +13,7 @@ func run() -> void:
 	root.add_child(main)
 	await process_frame
 	main.set_process(false)
-	check(main.simulation.state.settlements["1"].population == 5 and main.simulation.state.residents.values().filter(func(r): return not r.get("garrison", false)).size() == 15, "Every town starts with five residents (plus the extra sheriffs at the office)")
+	check(main.simulation.state.settlements["1"].population == 5 and main.simulation.state.residents.values().filter(func(r): return not r.get("garrison", false) and r.occupation not in ["Bandit", "Governor", "Barkeep"]).size() == 15, "Every town starts with five residents (plus the extra sheriffs at the office, the bandits, and the capital's governor and barkeep)")
 	check(main.get_node("DebugHUD").heading.text.contains("ALDER"), "HUD displays world")
 	check(main.get_node("WorldView").simulation == main.simulation, "View projects authoritative sim")
 	var before: String = main.simulation.state_hash()
@@ -24,7 +24,8 @@ func run() -> void:
 	check(main.clock.speed == 3, "Three-times speed control")
 	var hud = main.get_node("DebugHUD")
 	check(hud.pause_button.visible and main.bottom_bar.visible and hud.observer_panel.visible == false, "Compact play HUD keeps controls visible and tools closed")
-	check(hud.stats.text.contains("6 local residents") and hud.stats.text.contains("3×"), "HUD data still reports the local population and the current speed")
+	var local: int = main.simulation.state.residents.values().filter(func(npc): return npc.settlement == 1 and npc.health > 0).size()
+	check(hud.stats.text.contains("%d local residents" % local) and hud.stats.text.contains("3×"), "HUD data still reports the local population and the current speed")
 	var speed_labels: Array[String] = []
 	for control in hud.pause_button.get_parent().get_children():
 		if control is Button: speed_labels.append(control.text)
