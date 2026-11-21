@@ -243,6 +243,9 @@ static func furnishings(entity: Dictionary) -> Array[Dictionary]:
 			"bed": bottom = rect.size.y - 12.0
 			"table", "booking_desk": bottom = rect.size.y - 9.0
 			"shelf": bottom = rect.size.y - 13.0
+			"bar_counter", "writing_desk":
+				point = rect.get_center()
+				bottom = rect.size.y - 8.0
 		items.append({"kind": layout.kind, "point": point, "bottom": bottom, "rot": rot, "center": rect.get_center(), "size": rect.size,
 			"width": rect.size.x - 8, "color": Color("9fa7a5")})
 	return items
@@ -289,6 +292,8 @@ static func _draw_base_pose(c: Node2D, item: Dictionary) -> void:
 		"chest": chest(c, p)
 		"booking_desk": booking_desk(c, p, item.size)
 		"locker": locker(c, p, item.size)
+		"bar_counter": bar_counter(c, p, item.size)
+		"writing_desk": writing_desk(c, p, item.size)
 		"toilet": toilet(c, p)
 
 ## The intake desk in the sheriff's office: ledger, ink, a stamp, and the box camera used for mugshots.
@@ -503,7 +508,11 @@ static func bandit_camp(c: Node2D, p: Vector2) -> void:
 		c.draw_line(t + Vector2(0, -22), t + Vector2(0, -28), Color("5c4630"), 2.0)
 	# Log seats around the fire.
 	for seat in [Vector2(-48, 22), Vector2(48, 22), Vector2(0, 46)]:
-		Props.log_piece(c, p + seat + Vector2(-12, 0), p + seat + Vector2(12, -1))
+		var a: Vector2 = p + seat + Vector2(-12, 0)
+		var b: Vector2 = p + seat + Vector2(12, -1)
+		c.draw_line(a, b, Color("6e4a2c"), 8.0, true)
+		c.draw_line(a + Vector2(0, -2), b + Vector2(0, -2), Color("8c6340"), 3.0, true)
+		c.draw_circle(b, 4.0, Color("c9a06a"))
 	# Fire: a ring of stones, charred logs, flames and a little smoke.
 	for i in range(9):
 		var a: float = float(i) / 9.0 * TAU
@@ -532,6 +541,38 @@ static func street_lamp(c: Node2D, p: Vector2) -> void:
 	c.draw_rect(box, Color("2f2b28"), false, 1.5)
 	c.draw_line(p + Vector2(0, -56), p + Vector2(0, -45), Color("2f2b28", 0.7), 1.0)
 	c.draw_colored_polygon(PackedVector2Array([p + Vector2(-7, -56), p + Vector2(7, -56), p + Vector2(0, -61)]), Color("2f2b28"))
+
+## The saloon's bar: a long polished counter with a brass foot rail, and shelves of bottles on the
+## wall behind it. `p` is the centre, `size` the counter's size in pixels.
+static func bar_counter(c: Node2D, p: Vector2, size: Vector2) -> void:
+	var w: float = size.x
+	var back := Rect2(p + Vector2(-w / 2, -size.y / 2 - 30), Vector2(w, 12))
+	c.draw_rect(back, Color("5b3d26"))
+	for i in range(int(w / 9.0)):
+		var x: float = back.position.x + 5 + i * 9
+		var hue: Color = [Color("3f6b3a"), Color("8a3b2a"), Color("c9a24a"), Color("4a5f7a")][i % 4]
+		c.draw_rect(Rect2(Vector2(x, back.position.y - 8), Vector2(5, 9)), hue)
+		c.draw_rect(Rect2(Vector2(x + 1.5, back.position.y - 11), Vector2(2, 3)), hue.darkened(0.3))
+	var top := Rect2(p + Vector2(-w / 2, -size.y / 2), Vector2(w, size.y))
+	c.draw_rect(top.grow(1), Color(0, 0, 0, 0.25))
+	c.draw_rect(Rect2(top.position, Vector2(w, 8)), Color("9a6a3e"))
+	c.draw_rect(Rect2(top.position + Vector2(0, 8), Vector2(w, size.y - 8)), Color("6e4527"))
+	c.draw_line(top.position + Vector2(2, 2), top.position + Vector2(w - 2, 2), Color("c99766"), 1.2)
+	c.draw_line(Vector2(top.position.x + 3, top.end.y - 3), Vector2(top.end.x - 3, top.end.y - 3), Color("c8a046"), 2.0)
+	for x in [w * 0.25, w * 0.6]:
+		c.draw_circle(top.position + Vector2(x, 4), 2.2, Color("e0d5b5"))   # glasses on the bar
+
+## The governor's writing desk: a heavy desk with papers, an inkwell and a ledger.
+static func writing_desk(c: Node2D, p: Vector2, size: Vector2) -> void:
+	var r := Rect2(p - size / 2, size)
+	c.draw_rect(r.grow(1), Color(0, 0, 0, 0.25))
+	c.draw_rect(r, Color("7a4a2a"))
+	c.draw_rect(r.grow(-3), Color("8f5a34"))
+	c.draw_rect(Rect2(r.position + Vector2(8, 6), Vector2(16, 12)), Color("efe6cf"))
+	c.draw_rect(Rect2(r.position + Vector2(12, 9), Vector2(16, 12)), Color("e6dbbe"))
+	c.draw_rect(Rect2(r.end - Vector2(26, 20), Vector2(18, 13)), Color("5a2e22"))
+	c.draw_circle(r.position + Vector2(r.size.x - 10, 10), 3.0, Color("1f1a17"))
+	c.draw_line(r.position + Vector2(r.size.x - 10, 10), r.position + Vector2(r.size.x - 4, 2), Color("d8d0bc"), 1.0)
 
 static func lamp(c: Node2D, p: Vector2) -> void:
 	for radius in [23, 17, 11]:
