@@ -52,6 +52,7 @@ const Bleeding = preload("res://sim/combat/bleeding.gd")
 const FamilyEconomy = preload("res://sim/entities/family_economy.gd")
 const StallService = preload("res://sim/economy/stall_service.gd")
 const Light = preload("res://sim/world/light.gd")
+const Bandits = preload("res://sim/factions/bandits.gd")
 ## Commands that are the player doing something: refused while down or restrained, and they wake
 ## a sleeping player.
 const PLAYER_ACTS := ["move_player", "player_strike", "interact", "shotgun_fire", "hotbar_use", "eat", "drink", "treat_body", "context_action", "walk_to", "travel", "loot_take", "loot_all", "loot_coins", "loot_strip", "loot_give", "wear_item", "take_off", "hold_item", "hotbar_assign", "crouch_toggle", "travel_run", "shotgun_toggle", "shotgun_reload", "person_trade", "take_item", "surrender", "haggle"]
@@ -114,6 +115,7 @@ func start_game(population: int = 5) -> void:
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # last: the roads, woods and towns are all in place
 	Light.ensure_lamps(self)
 	Weather.ensure_regions(state)   # each town its own weather, now that the towns exist
+	Bandits.ensure_camp(self)       # a bandit camp far out in the wilds
 
 func new_id() -> int:
 	var result: int = state.next_id
@@ -150,6 +152,7 @@ func step() -> void:
 		Brawl.update(self)
 		Probe.mark("brawl")
 		Law.update(self)
+		Bandits.update(self)
 		Probe.mark("law")
 		Gunfire.update(self)
 		Probe.mark("gunfire")
@@ -274,6 +277,9 @@ func _drain(queue_name: String, is_command: bool) -> void:
 
 func apply_command(entry: Dictionary) -> void:
 	# Someone lying on the ground cannot act until they are back on their feet.
+	if state.has("brawl") and entry.kind in PLAYER_ACTS and entry.kind != "surrender" and Bandits.captive(state):
+		state.player_control.notice = "You're tied up. Wait for the bandits to sleep."
+		return
 	if state.has("brawl") and entry.kind in PLAYER_ACTS and (Brawl.player_down(state) or Law.restrained(state)):
 		return
 	# Asleep: any action (or a key press, sent as "wake") gets the player up; a step only wakes them.
@@ -560,6 +566,7 @@ func restore(snapshot_data: Dictionary) -> void:
 	if state.has("households"): Chests.ensure_all(self)
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # signposts in older saves learn their distances
 	Light.ensure_lamps(self)   # street lamps for saves made before they existed
+	Bandits.ensure_camp(self)  # and the bandit camp
 	if state.has("routes"):
 		BodyHealth.initialize(state)
 		PlayerActions.initialize(state)

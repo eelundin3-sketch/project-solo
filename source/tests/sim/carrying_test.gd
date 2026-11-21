@@ -26,7 +26,7 @@ func _scene(dead: bool) -> Array:
 		for dx in range(-60, -40):
 			if lonely.is_empty() and World.walkable(s, [store[0] + dx, store[1] + dy]) and World.walkable(s, [store[0] + dx + 12, store[1] + dy]): lonely = [store[0] + dx, store[1] + dy]
 	for npc in s.residents.values():
-		if npc.id != victim.id: s.entities[str(npc.id)].cell = s.entities[str(s.settlements[str(npc.settlement)].warehouse)].cell.duplicate()
+		if npc.id != victim.id and int(npc.settlement) != 0: s.entities[str(npc.id)].cell = s.entities[str(s.settlements[str(npc.settlement)].warehouse)].cell.duplicate()
 	s.entities[str(victim.id)].cell = lonely.duplicate()
 	s.entities[str(s.player)].cell = [lonely[0] + 1, lonely[1]]
 	if dead: Brawl.kill(sim, victim, "test")

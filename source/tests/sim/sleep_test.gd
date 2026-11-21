@@ -6,7 +6,8 @@ var failures: int = 0
 func check(value: bool, label: String) -> void:
 	if not value: failures += 1; printerr("FAIL: " + label)
 func sleepers(s: Dictionary) -> Array:
-	return s.residents.values().filter(func(n: Dictionary) -> bool: return not n.get("sleeping", {}).is_empty())
+	# Townsfolk only: the bandits sleep in bedrolls at their camp (bandits.gd), not in beds.
+	return s.residents.values().filter(func(n: Dictionary) -> bool: return not n.get("sleeping", {}).is_empty() and n.occupation != "Bandit")
 func _initialize() -> void:
 	var sim := Sim.new(); sim.start_game(); var s: Dictionary = sim.state
 	var lodge: Dictionary = s.entities[str(s.home)]

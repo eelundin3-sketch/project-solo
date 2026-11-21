@@ -488,6 +488,37 @@ static func construction(c: Node2D, entity: Dictionary, site: Dictionary, rect: 
 		box(c, Rect2(door + Vector2(4, 0), Vector2(16, 6)), Color("d2b47e"), 1)
 	c.draw_rect(rect, Color("dfc58f", 0.55), false, 1)
 
+## The bandits' camp: three patched canvas tents behind a ring-stone campfire with log seats.
+## `p` is the fire. The tents stand behind where the bandits sleep (bandits.gd _bed).
+static func bandit_camp(c: Node2D, p: Vector2) -> void:
+	for tent in [Vector2(-3, -3.1), Vector2(0, -4.1), Vector2(3, -4.1)]:
+		var t: Vector2 = p + tent * 24.0
+		Props.ellipse(c, t + Vector2(0, 14), Vector2(30, 8), Color(0, 0, 0, 0.18), 0, INK, 0)
+		var canvas := Color("b9a47c") if int(tent.x) % 2 == 0 else Color("a8916a")
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-28, 14), t + Vector2(0, -22), t + Vector2(28, 14)]), canvas)
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(0, -22), t + Vector2(28, 14), t + Vector2(8, 14)]), canvas.darkened(0.18))
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-7, 14), t + Vector2(0, -6), t + Vector2(7, 14)]), Color("3a2c20"))
+		c.draw_polyline(PackedVector2Array([t + Vector2(-28, 14), t + Vector2(0, -22), t + Vector2(28, 14)]), INK, 1.2, true)
+		c.draw_rect(Rect2(t + Vector2(-12, -6), Vector2(8, 6)), Color("8c7a5a"))   # a patch
+		c.draw_line(t + Vector2(0, -22), t + Vector2(0, -28), Color("5c4630"), 2.0)
+	# Log seats around the fire.
+	for seat in [Vector2(-48, 22), Vector2(48, 22), Vector2(0, 46)]:
+		Props.log_piece(c, p + seat + Vector2(-12, 0), p + seat + Vector2(12, -1))
+	# Fire: a ring of stones, charred logs, flames and a little smoke.
+	for i in range(9):
+		var a: float = float(i) / 9.0 * TAU
+		Props.ellipse(c, p + Vector2(cos(a) * 14, sin(a) * 8 + 6), Vector2(4.5, 3.2), Color("85827a"), 0, INK, 0.6)
+	c.draw_line(p + Vector2(-9, 8), p + Vector2(9, 3), Color("3b2a1c"), 4.0, true)
+	c.draw_line(p + Vector2(-8, 3), p + Vector2(8, 9), Color("4a3422"), 4.0, true)
+	c.draw_colored_polygon(PackedVector2Array([p + Vector2(-8, 6), p + Vector2(-3, -10), p + Vector2(0, -2), p + Vector2(4, -14), p + Vector2(8, 6)]), Color(0.95, 0.52, 0.16, 0.95))
+	c.draw_colored_polygon(PackedVector2Array([p + Vector2(-4, 6), p + Vector2(0, -6), p + Vector2(4, 6)]), Color(1.0, 0.85, 0.4, 0.95))
+	for i in range(3):
+		c.draw_circle(p + Vector2(3 + i * 2, -20 - i * 9), 4.0 + i * 2.5, Color(0.6, 0.6, 0.6, 0.22 - i * 0.05))
+	# The post a captive is tied to.
+	var post := p + Vector2(-4, 2) * 24.0
+	c.draw_line(post + Vector2(0, 4), post + Vector2(0, -34), Color("5c4630"), 5.0, true)
+	c.draw_line(post + Vector2(-3, -14), post + Vector2(3, -12), Color("c9b48a"), 2.0, true)
+
 ## A street lamp: a tall iron post with a glass lantern box on top. The light pool itself comes
 ## from the night layer, so the drawing is the same by day and by night.
 static func street_lamp(c: Node2D, p: Vector2) -> void:

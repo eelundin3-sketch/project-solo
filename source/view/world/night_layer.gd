@@ -89,6 +89,10 @@ func _slow_lights(s: Dictionary, area: Rect2) -> Array:
 		for lamp in World.of_kind(s, "street_lamp"):
 			var p := Vector2(lamp.cell[0], lamp.cell[1]) * CELL
 			if area.has_point(p): result.append(Vector4(p.x, p.y + 6.0, CELL * float(Light.LAMP_REACH), 1.0))
+		# The bandits' campfire.
+		for camp in World.of_kind(s, "bandit_camp"):
+			var f := Vector2(camp.cell[0], camp.cell[1]) * CELL
+			if area.has_point(f): result.append(Vector4(f.x, f.y, CELL * 4.5, 1.0))
 		# The two lamps drawn on each town square (frontier_map_art.gd square()).
 		for town in s.get("settlements", {}).values():
 			var store: Array = s.entities[str(town.warehouse)].cell

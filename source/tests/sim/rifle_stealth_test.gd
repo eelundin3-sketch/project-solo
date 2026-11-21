@@ -65,7 +65,7 @@ func _initialize() -> void:
 		if victim.is_empty() and npc.occupation not in ["Sheriff", "Child", "Trader"]: victim = npc
 	var lonely: Array = _open_row(qs, 6)
 	for npc in qs.residents.values():
-		if npc.id != victim.id: qs.entities[str(npc.id)].cell = qs.entities[str(qs.settlements[str(npc.settlement)].warehouse)].cell.duplicate()
+		if npc.id != victim.id and int(npc.settlement) != 0: qs.entities[str(npc.id)].cell = qs.entities[str(qs.settlements[str(npc.settlement)].warehouse)].cell.duplicate()
 	qs.entities[str(victim.id)].cell = [lonely[0] + 1, lonely[1]]
 	qs.entities[str(qs.player)].cell = lonely.duplicate()
 	victim.path = []; victim.sleeping = {}
@@ -90,7 +90,7 @@ func _initialize() -> void:
 		elif watcher.is_empty(): watcher = npc
 	var spot: Array = _open_row(ss, 8)
 	for npc in ss.residents.values():
-		if npc.id != v2.id and npc.id != watcher.id: ss.entities[str(npc.id)].cell = ss.entities[str(ss.settlements[str(npc.settlement)].warehouse)].cell.duplicate()
+		if npc.id != v2.id and npc.id != watcher.id and int(npc.settlement) != 0: ss.entities[str(npc.id)].cell = ss.entities[str(ss.settlements[str(npc.settlement)].warehouse)].cell.duplicate()
 	ss.entities[str(v2.id)].cell = [spot[0] + 1, spot[1]]
 	ss.entities[str(ss.player)].cell = spot.duplicate()
 	ss.entities[str(watcher.id)].cell = [spot[0] + 6, spot[1]]

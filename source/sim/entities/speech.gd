@@ -92,6 +92,7 @@ static func update(sim: RefCounted) -> void:
 			break
 	var player: Array = s.entities[str(s.player)].cell
 	for npc in talkers:
+		if npc.occupation == "Bandit": continue   # bandits have their own words for you (bandits.gd)
 		if npc.occupation == "Sheriff" and sim.random_int("speech", 0, 99) < 40: continue
 		var cell: Array = s.entities[str(npc.id)].cell
 		if absi(cell[0] - player[0]) <= 3 and absi(cell[1] - player[1]) <= 3 and s.tick >= int(npc.get("greeted_tick", 0)):

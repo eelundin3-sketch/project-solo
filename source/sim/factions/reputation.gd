@@ -6,7 +6,7 @@ extends RefCounted
 const Chronicle = preload("res://sim/world/chronicle.gd")
 const DAY := 14400
 const WEIGHT := {"murder": -40, "shooting": -15, "kick": -10, "theft": -10, "assault": -8, "assault_sheriff": -12,
-	"discharge": -4, "trespass": -3, "escape": -10, "bribery": -6, "helped": 6, "favour": 8, "saved_life": 20, "bounty": 10}
+	"discharge": -4, "trespass": -3, "escape": -10, "bribery": -6, "helped": 6, "favour": 8, "saved_life": 20, "bounty": 10, "bandits_cleared": 25}
 const FADE_DAYS := 28
 const MURDER_FADE_DAYS := 84
 const LABELS := [[-60, "Feared"], [-25, "Distrusted"], [25, "a Stranger"], [50, "Known"], [75, "Respected"], [101, "Beloved"]]

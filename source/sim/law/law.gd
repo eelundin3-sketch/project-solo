@@ -103,6 +103,7 @@ static func remember_crime(s: Dictionary, town: int, kind: String, victim: int) 
 ## `silent`: nothing to hear (a takedown from behind), so a sheriff must actually see it.
 static func crime(s: Dictionary, town: int, kind: String, victim: int, silent: bool = false) -> void:
 	if not s.has("player_control") or not SENTENCE.has(kind): return
+	if town == 0 or int(s.get("residents", {}).get(str(victim), {}).get("bandit", 0)) != 0: return   # outlaws: no town's law covers them
 	var entry: Dictionary = remember_crime(s, town, kind, victim)
 	var player: Array = s.entities[str(s.player)].cell
 	var Cover = load("res://sim/combat/cover.gd")
@@ -164,7 +165,8 @@ static func recognised(s: Dictionary, town: int) -> bool:
 static func surrender(s: Dictionary) -> void:
 	var pc: Dictionary = s.player_control
 	var under_fire: bool = not s.get("law", {}).get("alert", {}).is_empty()
-	if standoff_sheriff(s) == 0 and not _approaching(s) and not under_fire:
+	var bandits: bool = load("res://sim/factions/bandits.gd").demanding(s)
+	if standoff_sheriff(s) == 0 and not _approaching(s) and not under_fire and not bandits:
 		pc.notice = "Nobody is asking you to surrender."
 		return
 	pc.surrender = true

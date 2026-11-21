@@ -41,6 +41,7 @@ static func update(sim: RefCounted) -> void:
 	for key in s.residents:
 		var npc: Dictionary = s.residents[key]
 		if s.tick < int(npc.get("impact_until", 0)): continue
+		if int(npc.get("bandit", 0)) != 0: continue   # bandits live by their own rules (bandits.gd)
 		if LocalCombat.busy(s, npc.id) or npc.health <= 0: continue
 		if Brawl.busy(s, npc): continue
 		if not npc.get("migration", {}).is_empty():

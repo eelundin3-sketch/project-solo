@@ -23,7 +23,7 @@ static func tellers(s: Dictionary, entry: Dictionary, victim: int) -> Array:
 	for id in candidates:
 		var npc: Dictionary = s.get("residents", {}).get(str(id), {})
 		if npc.is_empty() or int(npc.get("health", 0)) <= 0 or Brawl.knocked(s, npc) or not npc.get("sleeping", {}).is_empty(): continue
-		if npc.occupation == "Child" or not npc.get("reporting", {}).is_empty(): continue
+		if npc.occupation in ["Child", "Bandit"] or not npc.get("reporting", {}).is_empty(): continue
 		if not id in result: result.append(int(id))
 	result.sort()
 	return result

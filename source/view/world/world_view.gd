@@ -983,6 +983,7 @@ func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D 
 		"caravan": MapArt.cart(canvas, p)
 		"signpost": MapArt.signpost(canvas, p, entity.get("ways", []))
 		"street_lamp": MapArt.street_lamp(canvas, p)
+		"bandit_camp": MapArt.bandit_camp(canvas, p)
 		"ore":
 			if entity.get("big", false):
 				var rr: Array = entity.rock_rect
