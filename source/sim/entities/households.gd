@@ -57,9 +57,12 @@ static func ensure_garden(sim: RefCounted, home_id: int) -> bool:
 	var s: Dictionary = sim.state
 	if not s.entities.has(str(home_id)) or not s.entities[str(home_id)].has("footprint"): return false
 	if not Crops.plots_for_home(s, home_id).is_empty(): return true
+	if bool(s.entities[str(home_id)].get("no_garden_room", false)): return false   # searched before: no room
 	var wanted: int = clampi(occupants(s, home_id) * 3 + 4, 6, 28)
 	var rect: Array = find_garden_rect(s, home_id, wanted)
 	if rect.is_empty():
+		# Remember it: the search is costly (about 8 ms) and the lodge, say, never has room.
+		s.entities[str(home_id)].no_garden_room = true
 		return false
 	_clear_trees(s, Rect2i(rect[0] - 1, rect[1] - 1, rect[2] + 2, rect[3] + 4))
 	var grown: int = sim.random_int("garden", 0, Crops.CYCLE_TICKS / 2)
@@ -148,7 +151,7 @@ static func garden_stance(plot: Dictionary) -> Array:
 	return [plot.rect[0] + plot.rect[2] / 2, plot.rect[1] + plot.rect[3]]
 
 ## Daily household life: children grow up, adults pair off, couples may have a child.
-static func daily(sim: RefCounted) -> void:
+static func daily(sim: RefCounted, with_towns: bool = true) -> void:
 	var s: Dictionary = sim.state
 	if not s.has("households"): return
 	for npc in s.residents.values():
@@ -157,17 +160,26 @@ static func daily(sim: RefCounted) -> void:
 			npc.occupation = "Gatherer"
 			sim.record(s.entities[str(npc.id)].name + " has grown up and is ready to work.")
 	Professions.seasonal_work(sim)   # farmers to wood and ore in winter, back to the fields in spring
-	for town in s.settlements.values():
-		Professions.assign(s, town.id)
-		load("res://sim/law/sheriff.gd").ensure(sim)
-		_pair_up(sim, town)
-		_births(sim, town)
+	if with_towns:
+		for town in s.settlements.values(): daily_town(sim, town)   # all at once (tests); the game spreads them
 	load("res://sim/entities/family_economy.gd").ensure(s)   # new families get their purse and name now
 	load("res://sim/entities/gossip.gd").daily(s)
 	load("res://sim/player/requests.gd").daily(sim)           # people ask for what they lack             # families share news; towns come to know it
 	load("res://sim/economy/market.gd").snapshot_trend(s)        # yesterday's prices, for the trend arrows
 	load("res://sim/factions/society.gd").drought_moves(sim)   # farming families leave after a failed harvest
 	load("res://sim/factions/reputation.gd").update(s)        # the player's standing in each town, from what each knows
+
+## One town's share of the midday update: its trades, its sheriffs, new couples and births. The
+## simulation runs each town on its own tick just after noon (simulation.gd), so a busy day in one
+## town (a couple moving in together rearranges their homes) never lands on the same tick as the
+## others.
+static func daily_town(sim: RefCounted, town: Dictionary) -> void:
+	var s: Dictionary = sim.state
+	Professions.assign(s, town.id)
+	load("res://sim/law/sheriff.gd").ensure(sim)
+	_pair_up(sim, town)
+	_births(sim, town)
+	load("res://sim/entities/family_economy.gd").ensure(s)   # a new family gets its purse and name
 
 static func _pair_up(sim: RefCounted, town: Dictionary) -> void:
 	var s: Dictionary = sim.state
@@ -191,8 +203,8 @@ static func _move_in_together(sim: RefCounted, town: Dictionary, a: int, b: int)
 	var s: Dictionary = sim.state
 	var best_home: int = 0
 	var best_room: int = 1
-	for entity in s.entities.values():
-		if entity.kind == "home" and entity.settlement == town.id and entity.has("footprint"):
+	for entity in World.of_kind(s, "home"):   # the cached list of homes, not all ~6,400 entities
+		if entity.settlement == town.id and entity.has("footprint"):
 			var room: int = capacity(s, entity.id) - members_of(s, entity.id)
 			if room > best_room or (room == best_room and best_home != 0 and entity.id < best_home and room >= 2):
 				best_home = entity.id

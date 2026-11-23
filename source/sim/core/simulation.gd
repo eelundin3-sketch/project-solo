@@ -118,6 +118,16 @@ func start_game(population: int = 5) -> void:
 	Light.ensure_lamps(self)
 	Weather.ensure_regions(state)   # each town its own weather, now that the towns exist
 	Bandits.ensure_camp(self)       # a bandit camp far out in the wilds
+	warm_scripts()
+
+## Scripts that daily and occasional work loads on demand (load() inside functions, to avoid
+## preload cycles). Loading them once when a game starts or is restored keeps the first noon of a
+## session from paying for reading them from disk. Changes no game state.
+const WARM_SCRIPTS := ["res://sim/player/requests.gd", "res://sim/entities/gossip.gd", "res://sim/factions/reputation.gd",
+	"res://sim/factions/society.gd", "res://sim/entities/family_economy.gd", "res://sim/economy/market.gd",
+	"res://sim/economy/traders.gd", "res://sim/world/chronicle.gd", "res://sim/law/witness_reports.gd"]
+static func warm_scripts() -> void:
+	for path in WARM_SCRIPTS: load(path)
 
 func new_id() -> int:
 	var result: int = state.next_id
@@ -244,13 +254,23 @@ func step() -> void:
 		Hotbar.update(state)
 		Shotgun.update(self)
 		Probe.mark("player+needs+shotgun")
-		if state.has("households") and state.tick % 14400 == 7200: Households.daily(self)
+		if state.has("households"):
+			var noon: int = state.tick % 14400 - 7200
+			if noon == 0: Households.daily(self, false)   # each town's share follows on its own tick
+			elif noon > 0 and noon % 40 == 0 and noon / 40 <= state.settlements.size():
+				# Each town's share on its own tick: 12:04, 12:08, 12:12 (in town id order).
+				var keys: Array = state.settlements.keys()
+				keys.sort_custom(func(a, b) -> bool: return int(a) < int(b))
+				Households.daily_town(self, state.settlements[keys[noon / 40 - 1]])
 		if state.has("households") and state.tick % 14400 == 11400: FamilyEconomy.payday(self)   # 19:00
 		Crops.update(state)
 		Probe.mark("daily+crops")
-		if state.tick % 14400 == 0:
+		if state.tick % 600 == 0:
+			# Woodland grows once a day per tree, spread over the hours: each tree at the hour its id
+			# gives it (about 260 trees an hour, not all ~6,300 on the stroke of midnight).
+			var hour: int = (state.tick / 600) % 24
 			for entity in World.of_kind(state, "tree"):
-				if true:
+				if int(entity.id) % 24 == hour:
 					if entity.get("felled", false):
 						# A stump sprouts a new tree after a week; a fallen trunk waits to be gathered.
 						if Inventory.amount(state, entity.id, "log") == 0 and state.tick - int(entity.get("felled_tick", 0)) >= 7 * 14400:
@@ -258,7 +278,7 @@ func step() -> void:
 							Inventory.produce(state, entity.id, "log", mini(10, Inventory.available(state, entity.id)))
 					else:
 						Inventory.produce(state, entity.id, "log", mini(2, Inventory.available(state, entity.id)))
-			record("A new day: rye grew in the fields and woodland grew.")
+			if state.tick % 14400 == 0: record("A new day: rye grew in the fields and woodland grew.")
 
 func _stamina_allows_run() -> bool:
 	return state.player_health.stamina > 0 and not state.player_health.get("exhausted", false)
@@ -570,6 +590,7 @@ func restore(snapshot_data: Dictionary) -> void:
 	Light.ensure_lamps(self)   # street lamps for saves made before they existed
 	Bandits.ensure_camp(self)  # and the bandit camp
 	Capital.ensure(self)       # and the capital's town house and saloon
+	warm_scripts()
 	if state.has("routes"):
 		BodyHealth.initialize(state)
 		PlayerActions.initialize(state)

@@ -54,13 +54,24 @@ static func darkness_at(tick: int, overcast: float = 0.0) -> float:
 	var day: float = DayClock.light_amount(float(tick % 14400) / 14400.0)
 	return clampf((1.0 - day) * 0.72 + overcast * 0.25 * (1.0 - day), 0.0, 0.8)
 
-func update(delta: float, view: Rect2, overcast: float) -> void:
+## `far`: zoomed out to the overview, where light pools are too small to see: the night is only
+## darkened, with no per-pixel pools to work out (the darkness pass is then almost free).
+func update(delta: float, view: Rect2, overcast: float, far: bool = false) -> void:
 	if simulation == null: return
 	var s: Dictionary = simulation.state
 	darkness = darkness_at(int(s.tick), overcast)
 	visible = darkness > 0.01
 	if not visible: return
 	bounds = view
+	if far:
+		if not lights.is_empty() or slow_center != Vector2.INF:
+			lights = []
+			slow_lights = []
+			slow_center = Vector2.INF
+			material.set_shader_parameter("light_count", 0)
+		material.set_shader_parameter("darkness", darkness)
+		queue_redraw()
+		return
 	slow_age += delta
 	if slow_age >= REFRESH or view.get_center().distance_to(slow_center) > CELL * 4.0:
 		slow_age = 0.0

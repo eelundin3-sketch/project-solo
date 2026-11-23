@@ -262,7 +262,7 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	weather_layer.simulation = simulation
 	weather_layer.update(view_bounds(), is_far(), _weather_amount)
 	night.simulation = simulation
-	night.update(minf(delta, 0.1), view_bounds(), overcast)
+	night.update(minf(delta, 0.1), view_bounds(), overcast, is_far())
 	t = _lap("v:night", t)
 	_update_shadow_layers()
 	# Speech bubbles only while someone is talking (plus one redraw to clear the last one).

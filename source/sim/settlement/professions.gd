@@ -5,6 +5,7 @@ extends RefCounted
 ## safety terms in the same way a miner emerges from nearby ore.
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
 const World = preload("res://sim/world/world_db.gd")
+const DerivedCache = preload("res://sim/core/derived_cache.gd")
 const GATHERERS: Array[String] = ["Gatherer", "Woodsman", "Farmer", "Miner"]
 const WORKSHOP_TRADES: Array[String] = ["Sawyer", "Baker", "Blacksmith"]
 ## Which resource entity kinds each gathering profession works.
@@ -24,17 +25,34 @@ const DESCRIPTIONS: Dictionary = {
 	"Carpenter": "Craftsman: joinery and furniture for new homes.",
 	"Child": "Too young to work; helps in the household garden."}
 
+## Trees and ore near a town and its fields: they change only when entities are added or removed,
+## so the counts are kept (derived, never saved) until the entity list changes. Counting ~6,300
+## trees for each town every day was the bulk of the midday update.
+static var _land_cache: Array = []
+static func _land(s: Dictionary, settlement: int, center: Array) -> Dictionary:
+	var cache: Dictionary = DerivedCache.slot(_land_cache, s.entities)
+	var signature := [s.entities.size(), World.entity_serial, settlement, center[0], center[1]]
+	var key := str(settlement)
+	if cache.has(key) and cache[key].signature == signature: return cache[key]
+	var land := {"trees": 0, "ore": 0, "fields": 0, "signature": signature}
+	for kind in ["tree", "ore"]:
+		for entity in World.of_kind(s, kind):
+			if not entity.has("cell"): continue
+			if absi(entity.cell[0] - center[0]) <= 62 and absi(entity.cell[1] - center[1]) <= 40:
+				land[("trees" if kind == "tree" else "ore")] += 1
+	for entity in World.of_kind(s, "farm"):
+		if int(entity.settlement) == settlement: land.fields += 1
+	cache[key] = land
+	return land
+
 static func settlement_resources(s: Dictionary, settlement: int) -> Dictionary:
 	var town: Dictionary = s.settlements[str(settlement)]
 	var center: Array = s.entities[str(town.warehouse)].cell
 	var result := {"trees": 0, "ore": 0, "fields": 0, "population": 0, "danger": 0, "workshops": {}}
-	for entity in World.of_kind(s, "tree") + World.of_kind(s, "ore") + World.of_kind(s, "farm"):
-		if not entity.has("cell"): continue
-		var near: bool = absi(entity.cell[0] - center[0]) <= 62 and absi(entity.cell[1] - center[1]) <= 40
-		match entity.kind:
-			"tree": result.trees += 1 if near else 0
-			"ore": result.ore += 1 if near else 0
-			"farm": result.fields += 1 if entity.settlement == settlement else 0
+	var land: Dictionary = _land(s, settlement, center)
+	result.trees = int(land.trees)
+	result.ore = int(land.ore)
+	result.fields = int(land.fields)
 	for npc in s.residents.values():
 		if npc.settlement == settlement and npc.health > 0 and npc.occupation != "Child" and not npc.get("garrison", false): result.population += 1   # the extra office sheriffs are not part of the trades economy
 	for workshop in s.get("workshops", {}).values():
