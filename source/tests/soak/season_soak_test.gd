@@ -1,5 +1,5 @@
 extends SceneTree
-## Late autumn through the winter into spring (milestone 5, E7): about seventeen days of the full game.
+## A whole year to spring (milestone 5, E7): summer and autumn to store up, the winter, into spring.
 ## The towns must get through the winter on their stores (nobody left starving), money and goods
 ## stay conserved, the fields lie bare in winter and are sown again in spring.
 const Sim = preload("res://sim/core/simulation.gd")
@@ -23,7 +23,7 @@ func _initialize() -> void:
 	var sim := Sim.new(523)
 	sim.start_game()
 	var s: Dictionary = sim.state
-	s.tick = Weather.season_start_tick(Weather.AUTUMN) + 14400 * 13   # autumn, day 14
+	# From the first morning of summer: the towns store up through summer and autumn, as in a game.
 	var worst_hungry := 0
 	var bare_in_winter := true
 	var start := Time.get_ticks_msec()
@@ -34,6 +34,11 @@ func _initialize() -> void:
 			if not errors.is_empty(): check(false, "Invariants at tick %d: %s" % [s.tick, errors])
 		if s.tick % 3600 == 0:
 			worst_hungry = maxi(worst_hungry, hungry_share(s))
+		if s.tick == Weather.season_start_tick(Weather.WINTER):
+			var stores := []
+			for town in s.settlements.values():
+				stores.append("%s %d bread %d rye" % [town.name, Inventory.amount(s, int(town.warehouse), "food"), Inventory.amount(s, int(town.warehouse), "rye")])
+			print("Stores at the first frost: " + ", ".join(stores))
 		if s.tick == Weather.season_start_tick(Weather.WINTER) + 14400 * 7:   # midwinter
 			for plot in s.crops.values():
 				if plot.kind == "field" and plot.state != "fallow": bare_in_winter = false

@@ -17,7 +17,7 @@ func asleep(s: Dictionary) -> Array:
 	var count := 0
 	var adults := 0
 	for npc in s.residents.values():
-		if npc.get("dead", false) or npc.occupation == "Sheriff": continue
+		if npc.get("dead", false) or npc.occupation in ["Sheriff", "Barkeep", "Bandit"]: continue   # the barkeep keeps later hours; bandits sleep at their camp
 		adults += 1
 		if not npc.get("sleeping", {}).is_empty(): count += 1
 	return [count, adults]
