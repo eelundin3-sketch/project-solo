@@ -804,7 +804,12 @@ func _draw_brawl(s: Dictionary) -> void:
 				var angle: float = TAU * float(step) / 10.0
 				var wobble: float = 0.8 + 0.4 * CropArt.rand01(seed_value + step, blob)
 				points.append(centre + Vector2(cos(angle) * rx * wobble, sin(angle) * rx * 0.55 * wobble))
-			draw_colored_polygon(points, color)
+			# A wobble that twists the blob is drawn as a plain oval (filling it errors every frame).
+			if MapArt.Props.fillable(points): draw_colored_polygon(points, color)
+			else:
+				draw_set_transform(centre, 0.0, Vector2(1.0, 0.55))
+				draw_circle(Vector2.ZERO, rx, color)
+				draw_set_transform(Vector2.ZERO)
 		for drop in range(3 + int(decal.size)):
 			var distance: float = 7.0 + CropArt.rand01(seed_value + 9, drop) * 12.0
 			var sideways: float = (CropArt.rand01(drop, seed_value + 5) - 0.5) * 8.0
