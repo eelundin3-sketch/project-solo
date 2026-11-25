@@ -497,9 +497,9 @@ static func construction(c: Node2D, entity: Dictionary, site: Dictionary, rect: 
 ## WOODPILE, POST). Three big canvas tents, each open at the front with a bedroll inside where its
 ## bandit sleeps; log seats; a tripod and pot over the fire; a woodpile; the post for a captive.
 ## The flames themselves are drawn moving every frame (campfire_flames).
-static func bandit_camp(c: Node2D, p: Vector2) -> void:
+static func bandit_camp(c: Node2D, p: Vector2, tents: int = 3) -> void:
 	var Bandits = load("res://sim/factions/bandits.gd")
-	for i in range(Bandits.TENTS.size()):
+	for i in range(clampi(tents, 3, Bandits.TENTS.size())):
 		var t: Vector2 = p + Vector2(Bandits.TENTS[i][0], Bandits.TENTS[i][1]) * 24.0
 		var canvas: Color = [Color("b9a47c"), Color("a8916a"), Color("b3a07a")][i % 3]
 		var back := t + Vector2(0, -34)

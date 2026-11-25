@@ -807,6 +807,7 @@ func _draw_world() -> void:
 	# Campfires burn and flicker every frame (the stone ring and logs are in the background).
 	if not is_far():
 		for camp in World.of_kind(s, "bandit_camp"):
+			if bool(camp.get("abandoned", false)): continue   # a cold, empty camp
 			var fire_at := Vector2(camp.cell[0], camp.cell[1]) * CELL
 			if bounds.has_point(fire_at): MapArt.campfire_flames(self, fire_at, atmosphere_time)
 	_draw_travel_goal(s)
@@ -1044,7 +1045,7 @@ func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D 
 		"caravan": MapArt.cart(canvas, p)
 		"signpost": MapArt.signpost(canvas, p, entity.get("ways", []))
 		"street_lamp": MapArt.street_lamp(canvas, p)
-		"bandit_camp": MapArt.bandit_camp(canvas, p)
+		"bandit_camp": MapArt.bandit_camp(canvas, p, s.get("bandits", {}).get("members", []).size() if int(s.get("bandits", {}).get("camp", 0)) == int(entity.id) else 3)
 		"ore":
 			if entity.get("big", false):
 				var rr: Array = entity.rock_rect

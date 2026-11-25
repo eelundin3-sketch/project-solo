@@ -659,7 +659,7 @@ static func _actor_keys(s: Dictionary) -> Array:
 	var keys: Array = []
 	if s.has("player"): keys.append(str(s.player))
 	for key in s.get("residents", {}).keys():
-		if not bool(s.residents[key].get("buried", false)): keys.append(key)   # the dead, once laid to rest, are gone
+		if not bool(s.residents[key].get("buried", false)) and not bool(s.residents[key].get("gone", false)): keys.append(key)   # the dead, once laid to rest, are gone
 	for key in s.get("local_combat", {}).get("fighters", {}):
 		if not s.get("residents", {}).has(key): keys.append(key)
 	return keys

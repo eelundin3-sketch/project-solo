@@ -154,8 +154,11 @@ static func options(s: Dictionary, npc: Dictionary) -> Array:
 			if not load("res://sim/law/investigation.gd").suspect_case(s, npc).is_empty():
 				result.push_front(_opt("c_confess", "...All right. It was me."))
 				result.push_front(_opt("c_deny", "I had nothing to do with it."))
-			if s.has("bandits") and not bool(s.bandits.get("cleared", false)) and not _knows_camp(s):
-				result.append(_opt("c_camp", "Any trouble out in the wilds?"))
+			var Bounties = load("res://sim/law/bounties.gd")
+			if Bounties.can_hand_in(s, npc): result.push_front(_opt("c_hand_in", "I've brought in one of the bandits."))
+			if s.has("bandits") and not bool(s.bandits.get("cleared", false)):
+				result.append(_opt("c_bounty", "Any bounties?"))
+				if not _knows_camp(s): result.append(_opt("c_camp", "Any trouble out in the wilds?"))
 		"Barkeep":
 			result.append(_opt("c_drink", "A drink, and whatever you're hearing (%d coins)." % DRINK, coins >= DRINK, "" if coins >= DRINK else "You haven't got %d" % DRINK))
 		"Governor":
@@ -220,6 +223,12 @@ static func _reply(sim: RefCounted, npc: Dictionary, id: String) -> String:
 				var saw: bool = int(npc.id) in entry.get("witnesses", [])
 				return "Funny you should ask. It was you, wasn't it?" if saw else "Some stranger, they say. Dressed a lot like you, come to think of it."
 			return "%s, so they say." % String(s.entities.get(str(entry.actor), {}).get("name", "someone"))
+		"c_bounty":
+			mark_camp(s)
+			return load("res://sim/law/bounties.gd").notice(s) + " Their camp's marked on your map."
+		"c_hand_in":
+			var paid: String = load("res://sim/law/bounties.gd").hand_in(sim, npc)
+			return "Good work." if paid.is_empty() else paid.split(" pays you ")[0] + ": here's %s" % paid.split(" pays you ")[1]
 		"c_camp":
 			mark_camp(s)
 			return "There's a gang camped out in the wilds, far from any town. I've marked it on your map. Steer clear, or bring them in if you're brave."

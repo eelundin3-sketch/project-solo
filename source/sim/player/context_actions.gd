@@ -86,6 +86,7 @@ static func options(s: Dictionary, id: int, part: String = "") -> Array:
 	match e.get("kind", ""):
 		"resident":
 			var npc: Dictionary = s.residents.get(str(id), {})
+			if load("res://sim/law/bounties.gd").can_tie(s, npc): result.append(_opt("tie_up", "Tie him up", "hand"))
 			var dead: bool = not npc.is_empty() and npc.health <= 0
 			var down: bool = (Brawl.knocked(s, npc) or dead) if not npc.is_empty() else false
 			var asleep: bool = not npc.get("sleeping", {}).is_empty()
@@ -326,6 +327,9 @@ static func perform(sim: RefCounted, id: int, action: String, part: String = "")
 			Actions.interact(sim, id)
 		"loot": Looting.open(s, id)
 		"carry": load("res://sim/player/carrying.gd").pick_up(s, id)
+		"tie_up":
+			var said: String = load("res://sim/law/bounties.gd").tie(sim, s.residents.get(str(id), {}))
+			if not said.is_empty(): pc.notice = said
 		"say_friendly", "say_firm", "say_threaten", "persuade", "bribe_10", "bribe_25", "bribe_50", "ask_help", "accept_request", "hand_over":
 			var npc: Dictionary = s.residents.get(str(id), {})
 			if npc.is_empty(): return

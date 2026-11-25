@@ -30,7 +30,7 @@ static func _along(s: Dictionary, trip: Dictionary) -> Array: return load("res:/
 
 ## Away from the camp: on an errand in town, or in jail.
 static func away(npc: Dictionary) -> bool:
-	return not npc.get("errand", {}).is_empty() or not npc.get("jailed", {}).is_empty()
+	return not npc.get("errand", {}).is_empty() or not npc.get("jailed", {}).is_empty() or npc.has("prisoner_of") or bool(npc.get("gone", false))
 
 ## The town nearest to `cell` (by its store).
 static func nearest_town(s: Dictionary, cell: Array) -> int:
@@ -73,7 +73,7 @@ static func update(sim: RefCounted) -> void:
 	if not s.has("bandits") or not s.has("residents"): return
 	for id in s.bandits.members:
 		var npc: Dictionary = s.residents.get(str(id), {})
-		if npc.is_empty(): continue
+		if npc.is_empty() or bool(npc.get("gone", false)): continue
 		if not npc.get("jailed", {}).is_empty():
 			_jailed(sim, npc)
 			continue
@@ -93,8 +93,12 @@ static func update(sim: RefCounted) -> void:
 						errand.since = s.tick
 						npc.status = "Loitering about town"
 					else:
+						var leaving: bool = str(errand.kind) == "leaving"
 						npc.erase("errand")
-						npc.status = "Back at camp"
+						if leaving:
+							npc.gone = true          # off the edge of the map: out of the story
+							npc.status = "Gone"
+						else: npc.status = "Back at camp"
 						continue
 			"in_town":
 				if s.tick % 20 == int(npc.id) % 20:
@@ -186,6 +190,7 @@ static func start(sim: RefCounted, town: int, bandit: Dictionary, lead: Dictiona
 		sheriff.status = "Arresting an outlaw"
 	bandit.errand.phase = "held"
 	bandit.errand.spotted = true
+	bandit.errand.town = town
 	bandit.status = "Caught by the law"
 	_law()._say(sim, int(lead.id), "You there! Hands where I can see them!")
 

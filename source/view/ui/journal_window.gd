@@ -91,6 +91,8 @@ func rows(s: Dictionary) -> Array:
 				if record.is_empty(): continue
 				var Notoriety = load("res://sim/law/notoriety.gd")
 				result.append(["Wanted in %s" % str(s.settlements[key].name), "%s · %d hours · known by %s" % [Notoriety.crimes_line(s, int(key)), int(record.hours), "face" if bool(record.get("face", false)) else "your clothes"]])
+			if s.has("bandits") and bool(s.get("player_status", {}).get("known_places", {}).get("bandit_camp", false)):
+				result.append(["Bounties", load("res://sim/law/bounties.gd").notice(s)])
 			var Look = load("res://sim/player/look.gd")
 			result.append(["Your looks", "You look %s." % Look.label(s)])
 			var Encumbrance = load("res://sim/player/encumbrance.gd")

@@ -100,7 +100,10 @@ static func _camp_spot(s: Dictionary) -> Array:
 			for town in s.settlements.values():
 				var store: Array = s.entities[str(town.warehouse)].cell
 				score = mini(score, (store[0] - x) * (store[0] - x) + (store[1] - y) * (store[1] - y))
-			if score > best_score and _clear(s, TownLayout, [x, y]):
+			var near_old := false
+			for old in s.get("old_camps", []):
+				if (int(old[0]) - x) * (int(old[0]) - x) + (int(old[1]) - y) * (int(old[1]) - y) < OLD_CAMP_GAP * OLD_CAMP_GAP: near_old = true
+			if score > best_score and not near_old and _clear(s, TownLayout, [x, y]):
 				best_score = score
 				best = [x, y]
 			x += 12
@@ -119,7 +122,11 @@ static func _clear(s: Dictionary, TownLayout: GDScript, at: Array) -> bool:
 
 ## The camp's layout, in cells from the fire: three tents behind it (each bandit sleeps inside
 ## his own), log seats round the fire, the cooking pot, a woodpile, the lookout spot and the post.
-const TENTS := [[-6, -5], [0, -7], [6, -5]]
+const TENTS := [[-6, -5], [0, -7], [6, -5], [-9, -1], [9, -4]]   # the last two go up for a 4th and 5th member
+const MAX_MEMBERS := 5
+const RECRUIT_EVERY_DAYS := 4
+const NEW_GANG_AFTER := 14400 * 15   # a season after a camp is cleared, a new gang moves in
+const OLD_CAMP_GAP := 60
 const SEATS := [[-2, 1], [2, 1], [0, 2]]
 const POT := [1, -1]
 const WOODPILE := [8, 2]
@@ -151,7 +158,7 @@ static func _seat(spot: Array, i: int) -> Array:
 
 ## Where a bandit sleeps: inside his tent.
 static func _bed(spot: Array, i: int) -> Array:
-	return at_camp(spot, TENTS[i % 3])
+	return at_camp(spot, TENTS[i % TENTS.size()])
 
 static func post(s: Dictionary) -> Array:
 	return at_camp(s.bandits.cell, POST)
@@ -195,7 +202,9 @@ static func update(sim: RefCounted) -> void:
 	if bool(b.cleared):
 		if s.tick % 30 == 0: _leave(sim)
 		if s.tick % 2 == 0: _beaten_life(s)
+		if s.tick - int(b.since) >= NEW_GANG_AFTER: _new_gang(sim)
 		return
+	if s.tick % 14400 == 7200 and (int(s.tick) / 14400) % RECRUIT_EVERY_DAYS == 0: _recruit(sim)
 	if s.tick % 2 != 0: return
 	var pc: Dictionary = s.player_control
 	var player: Array = s.entities[str(s.player)].cell
@@ -782,6 +791,11 @@ static func _beaten_life(s: Dictionary) -> void:
 	for i in range(members.size()):
 		var npc: Dictionary = members[i]
 		if load("res://sim/law/outlaw_arrest.gd").away(npc): continue
+		var gone_far: bool = maxi(absi(player[0] - s.bandits.cell[0]), absi(player[1] - s.bandits.cell[1])) > 40
+		if _able(s, npc) and npc.get("fleeing", []).is_empty() and gone_far and s.tick - int(s.bandits.since) > 600:
+			# Beaten, and you've gone: they pack up and leave the valley.
+			_leave_valley(s, npc)
+			continue
 		if not npc.get("fleeing", []).is_empty() and _able(s, npc) and s.entities[str(npc.id)].cell == npc.fleeing and s.tick - int(s.bandits.since) > 600:
 			# A runaway from a beaten gang drifts into the nearest town.
 			var Outlaws = load("res://sim/law/outlaw_arrest.gd")
@@ -792,7 +806,88 @@ static func _beaten_life(s: Dictionary) -> void:
 		if bool(npc.get("surrendered", false)) and maxi(absi(at[0] - player[0]), absi(at[1] - player[1])) <= 15: continue
 		if _turn(s, npc, 1) or s.entities[str(npc.id)].cell == _seat(s.bandits.cell, i): _do_at(s, npc, _seat(s.bandits.cell, i), "Beaten; keeping out of your way", SEATS[i % 3], false)
 
-## Bandits running for it: a step every tick towards their spot; there they stop and wait it out.
+## Off to the nearest edge of the map, and gone (outlaw_arrest.gd walks the trip; at the end
+## they're `gone`: no longer drawn or simulated; what they carry goes with them, still counted).
+static func _leave_valley(s: Dictionary, npc: Dictionary) -> void:
+	var bounds: Array = s.world.get("bounds", [-96, -84, 486, 336])
+	var at: Array = s.entities[str(npc.id)].cell
+	var edges: Array = [[int(bounds[0]) + 2, at[1]], [int(bounds[2]) - 2, at[1]], [at[0], int(bounds[1]) + 2], [at[0], int(bounds[3]) - 2]]
+	edges.sort_custom(func(a, b) -> bool: return absi(a[0] - at[0]) + absi(a[1] - at[1]) < absi(b[0] - at[0]) + absi(b[1] - at[1]))
+	for edge in edges:
+		var spot: Array = _open_near(s, edge)
+		if spot.is_empty(): continue
+		var trip: Dictionary = load("res://sim/law/reinforcements.gd")._trip(s, at, spot, 3)
+		if trip.is_empty(): continue
+		_sit_up(npc)
+		npc.surrendered = false
+		npc.errand = {"kind": "leaving", "town": 0, "phase": "returning", "trip": trip, "since": s.tick}
+		npc.status = "Leaving the valley"
+		return
+	npc.gone = true   # nowhere to walk to: they slip away
+
+## Every few days a newcomer joins (up to five): he walks in from beyond the nearest town and
+## through it, where the law may spot him (outlaw_arrest.gd), then on to the camp.
+static func _recruit(sim: RefCounted) -> void:
+	var s: Dictionary = sim.state
+	var b: Dictionary = s.bandits
+	var alive := 0
+	for id in b.members:
+		var npc: Dictionary = s.residents.get(str(id), {})
+		if not npc.is_empty() and int(npc.health) > 0 and not bool(npc.get("gone", false)): alive += 1
+	if alive >= MAX_MEMBERS: return
+	var Outlaws = load("res://sim/law/outlaw_arrest.gd")
+	var town: int = Outlaws.nearest_town(s, b.cell)
+	if town == 0: return
+	var store: Array = s.entities[str(s.settlements[str(town)].warehouse)].cell
+	var away := Vector2(store[0] - b.cell[0], store[1] - b.cell[1]).normalized() * 35.0
+	var spawn: Array = _open_near(s, [store[0] + roundi(away.x), store[1] + roundi(away.y)])
+	if spawn.is_empty(): return
+	var trip: Dictionary = load("res://sim/law/reinforcements.gd")._trip(s, spawn, _seat(b.cell, alive), 3)
+	if trip.is_empty(): return
+	var id: int = _new_member(sim, spawn)
+	b.members.append(id)
+	var npc: Dictionary = s.residents[str(id)]
+	npc.errand = {"kind": "joining", "town": town, "phase": "returning", "trip": trip, "since": s.tick}
+	npc.status = "On his way to join the gang"
+	sim.record("A new face has been seen heading out to the bandits' camp.")
+
+static func _new_member(sim: RefCounted, cell: Array) -> int:
+	var s: Dictionary = sim.state
+	var id: int = load("res://sim/entities/residents.gd").add_resident(sim, 0, cell)
+	var npc: Dictionary = s.residents[str(id)]
+	npc.occupation = "Bandit"
+	npc.bandit = int(s.bandits.camp) if s.has("bandits") else 1
+	npc.status = "Lounging by the fire"
+	Inventory.produce(s, id, "rifle", 1)   # recorded as made, so goods stay accounted for
+	var Outfits = load("res://sim/entities/outfits.gd")
+	Outfits.dress(s, id, Outfits.BANDIT)
+	return id
+
+## A season after the camp was cleared, a new gang of three makes camp somewhere else far out. The
+## old camp is left cold. Old members still in jail stay on the books (they join the new gang when
+## they're let out).
+static func _new_gang(sim: RefCounted) -> void:
+	var s: Dictionary = sim.state
+	var old: Dictionary = s.bandits
+	var keep: Array = []
+	for id in old.members:
+		var npc: Dictionary = s.residents.get(str(id), {})
+		if not npc.is_empty() and int(npc.health) > 0 and (not npc.get("jailed", {}).is_empty() or npc.has("prisoner_of")): keep.append(int(id))
+		elif not npc.is_empty() and int(npc.health) > 0 and not bool(npc.get("gone", false)): npc.gone = true
+	var camp: Dictionary = s.entities.get(str(old.camp), {})
+	if not camp.is_empty(): camp.abandoned = true
+	if not s.has("old_camps"): s.old_camps = []
+	s.old_camps.append(old.cell.duplicate())
+	if not s.has("old_gangs"): s.old_gangs = []
+	s.old_gangs.append({"camp": int(old.camp), "cell": old.cell.duplicate(), "stash": int(old.stash)})
+	s.erase("bandits")
+	ensure_camp(sim)
+	if s.has("bandits"):
+		s.bandits.members.append_array(keep)
+		for id in keep:
+			s.residents[str(id)].bandit = int(s.bandits.camp)
+
+## Beaten bandits who come round have had enough towards their spot; there they stop and wait it out.
 static func _run_off(s: Dictionary, members: Array) -> void:
 	for npc in members:
 		if load("res://sim/law/outlaw_arrest.gd").away(npc): continue
