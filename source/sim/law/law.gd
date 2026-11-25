@@ -301,6 +301,11 @@ static func _join_lead(sim: RefCounted, npc: Dictionary, arrest: Dictionary, lea
 static func _backup(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: Array, player: Array) -> void:
 	var s: Dictionary = sim.state
 	npc.status = "Covering his partner"
+	var spot: Array = arrest.get("flank_spot", [])
+	if not spot.is_empty() and cell != spot and s.tick - int(arrest.since) < 120:
+		_step_toward(s, npc, arrest, cell, spot)   # at a run to his side of the gunman
+		npc.running_tick = s.tick
+		npc.status = "Covering the rush"
 	var lead: int = _other_lead(s, npc)
 	if lead != 0:
 		_join_lead(sim, npc, arrest, lead)
@@ -375,7 +380,12 @@ static func _pursue(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: 
 		return
 	if gap > 1.5:
 		var diagonal: bool = not npc.path.is_empty() and npc.path[0][0] != cell[0] and npc.path[0][1] != cell[1]
-		if Brawl.chase_pace(s, npc, gap, diagonal): _step_toward(s, npc, arrest, cell, player)
+		if bool(arrest.get("rush", false)):
+			# Rushing a downed gunman: flat out, a step every tick.
+			_step_toward(s, npc, arrest, cell, player)
+			npc.running_tick = s.tick
+			npc.status = "Rushing the gunman"
+		elif Brawl.chase_pace(s, npc, gap, diagonal): _step_toward(s, npc, arrest, cell, player)
 	elif s.tick >= int(arrest.get("next_grab", 0)):
 		# Tackle: put the traveller on the ground, then cuff.
 		var direction: Array = [signi(player[0] - cell[0]), signi(player[1] - cell[1])]

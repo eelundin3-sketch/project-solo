@@ -269,6 +269,7 @@ static func _idle(sim: RefCounted, able: Array) -> void:
 		var index: int = s.bandits.members.find(int(npc.id))
 		var entity: Dictionary = s.entities[str(npc.id)]
 		if npc.has("captor"): continue   # walking you to the post (_bring_in)
+		if npc.has("cover_spot") and captive(s): continue   # covering the one taking you
 		if DayClock.bed_hours(s, npc) and int(npc.id) == _night_watch(s, able):
 			# On night watch: awake at the lookout (carrying a light), in three-hour shifts.
 			_sit_up(npc)
@@ -495,7 +496,7 @@ static func _fight(sim: RefCounted, able: Array, player: Array, from_camp: int, 
 	var Brawl = load("res://sim/combat/brawl.gd")
 	if hurt: b.lethal = true
 	var fighters: Array = _fighters(s, able)
-	if bool(pc.get("surrender", false)) or Brawl.player_down(s):
+	if bool(pc.get("surrender", false)) or load("res://sim/combat/gunfire.gd").safe_to_rush(s):
 		if fighters.is_empty(): pc.surrender = false
 		else:
 			var leader: Dictionary = _leader(s, fighters)
@@ -698,10 +699,19 @@ static func _bring_in(sim: RefCounted, c: Dictionary) -> void:
 	var Brawl = load("res://sim/combat/brawl.gd")
 	match str(c.stage):
 		"fetch":
+			_cover_the_rush(s, captor, me)
 			if maxi(absi(at[0] - me[0]), absi(at[1] - me[1])) > 1:
-				if s.tick % 2 == 0: _step(s, captor, me)
-				captor.status = "Coming to tie you up"
+				_step(s, captor, me)   # flat out: they want you before you're up
+				captor.running_tick = s.tick
+				captor.status = "Rushing you"
 				return
+			if not Brawl.player_down(s):
+				# Crawling, or getting up: shoved back down first.
+				var push: Array = [signi(me[0] - at[0]), signi(me[1] - at[1])]
+				Brawl.knockdown(s, pc, me, "fall", push)
+				Brawl.event(s, "shove_hit", me, push)
+				captor.tackle = {"start": s.tick, "end": s.tick + 10}
+				pc.notice = "%s shoves you back down!" % s.entities[str(captor.id)].name
 			if Brawl.player_down(s):
 				# Hauled up off the ground (the same moves as the law's lift).
 				var knock: Dictionary = pc.get("knock", {})
@@ -716,6 +726,7 @@ static func _bring_in(sim: RefCounted, c: Dictionary) -> void:
 				return
 			_start_walk(s, c, captor)
 		"lift":
+			_cover_the_rush(s, captor, me)
 			captor.status = "Hauling you up"
 			if s.tick - int(c.get("since_stage", s.tick)) < LIFT_TICKS: return
 			pc.knock = {}
@@ -744,6 +755,26 @@ static func _bring_in(sim: RefCounted, c: Dictionary) -> void:
 				s.entities[str(captor.id)].cell = next
 			c.next_step = s.tick + 3
 
+## While one of them takes you, the others run to your sides with their guns on you.
+static func _cover_the_rush(s: Dictionary, captor: Dictionary, me: Array) -> void:
+	var Gunfire = load("res://sim/combat/gunfire.gd")
+	var side := 1
+	for npc in _members(s):
+		if int(npc.id) == int(captor.id) or not _able(s, npc) or load("res://sim/law/outlaw_arrest.gd").away(npc): continue
+		_sit_up(npc)
+		npc.gun_out = true
+		npc.aim_at = int(s.player)
+		var at: Array = s.entities[str(npc.id)].cell
+		var spot: Array = npc.get("cover_spot", [])
+		if spot.is_empty():
+			spot = Gunfire.side_spot(s, at, me, side)
+			npc.cover_spot = spot
+		side = -side
+		if not spot.is_empty() and at != spot:
+			_step(s, npc, spot)
+			npc.running_tick = s.tick
+		npc.status = "Covering you"
+
 static func _start_walk(s: Dictionary, c: Dictionary, captor: Dictionary) -> void:
 	var route := Nav.request_path(s, s.entities[str(captor.id)].cell, post(s))
 	captor.path = route.path if route.ok else []
@@ -751,6 +782,10 @@ static func _start_walk(s: Dictionary, c: Dictionary, captor: Dictionary) -> voi
 	c.stage = "walk"
 	c.next_step = s.tick
 	captor.captor = {"phase": "escort", "since": s.tick}
+	for npc in _members(s):
+		if int(npc.id) != int(captor.id):
+			npc.erase("cover_spot")
+			if int(npc.get("aim_at", 0)) == int(s.player) and npc.get("cover_cycle", {}).is_empty(): npc.gun_out = false
 
 static func _tie(sim: RefCounted, c: Dictionary, captor: Dictionary) -> void:
 	var s: Dictionary = sim.state

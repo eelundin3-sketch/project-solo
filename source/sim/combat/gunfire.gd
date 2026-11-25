@@ -32,6 +32,7 @@ const SHOUT_GAP := 100           # a sheriff shouts at most once in this many ti
 const FLANK_NEAR := 5            # a flanking spot is this close to the gunman...
 const FLANK_FAR := 10            # ...and no further
 const GUARD_RANGE := 8.0         # a bandit holding the camp fights once the gunman is this close to it
+const RUSH_QUIET := 30           # crawling and not fired for this long: safe to rush in
 const SAFE_AFTER_SHOT := 15       # only move while the gunman has not fired for this long (or is reloading)
 const Bleeding = preload("res://sim/combat/bleeding.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
@@ -105,9 +106,10 @@ static func on_player_shot(sim: RefCounted, origin: Array, heard: int = 45) -> v
 		alerts[str(town)] = alert
 		Law().crime(s, town, "discharge", 0)
 	elif alert.phase in ["hold", "arrest"]:
-		# Fired again after stopping: from here on they shoot to kill.
+		# Fired again after stopping (or from the ground as they rush in): from here on they shoot to kill.
 		alert.phase = "lethal"
 		alert.lethal = true
+		alert.rush = false
 		alert.since = s.tick
 	alert.shots = int(alert.shots) + 1
 	alert.last_shot = s.tick
@@ -158,14 +160,35 @@ static func update(sim: RefCounted) -> void:
 					alert.phase = "arrest"
 			"arrest":
 				pass
-		# Brought down, or crawling on a shot-up leg: they move in and take the gunman (not when it's to the death).
-		var crawling: bool = load("res://sim/combat/limbs.gd").crawling(s, int(s.player))
-		if (Brawl.player_down(s) or crawling) and alert.phase in ["engage", "hold"] and not bool(alert.lethal):
+		# Brought down, or crawling and no longer shooting: they want him alive, so they rush in and
+		# take him, even when it had come to shooting to kill.
+		if safe_to_rush(s) and alert.phase in ["engage", "hold", "lethal"]:
 			alert.phase = "arrest"
+			alert.rush = true
 		if str(alert.phase) != str(alert.get("phase_said", "")):
 			alert.phase_said = alert.phase
 			_announce(sim, town, alert)
 		_assign(sim, town, alert, player)
+
+## A downed gunman is safe to rush: knocked down, or crawling with no shot fired for RUSH_QUIET
+## ticks (or the gun put away). Still shooting from the ground, they keep to cover.
+static func safe_to_rush(s: Dictionary) -> bool:
+	if Brawl.player_down(s): return true
+	if not load("res://sim/combat/limbs.gd").crawling(s, int(s.player)): return false
+	var gun: Dictionary = s.get("shotgun", {})
+	return not bool(gun.get("equipped", false)) or s.tick - int(gun.get("last_shot", -1000)) >= RUSH_QUIET
+
+## A spot 3-4 cells off to the side of `target` (left or right of the line from `from`), walkable,
+## with a clear line to them: where a partner covers the rush. [] if none.
+static func side_spot(s: Dictionary, from: Array, target: Array, side: int) -> Array:
+	var v := Vector2(target[0] - from[0], target[1] - from[1])
+	if v.length() < 0.5: v = Vector2(1, 0)
+	var across := Vector2(-v.y, v.x).normalized() * float(side)
+	for reach in [3.5, 4.5, 2.5]:
+		var p: Vector2 = Vector2(target[0], target[1]) + across * float(reach)
+		var c: Array = [roundi(p.x), roundi(p.y)]
+		if World.walkable(s, c) and Cover.line_clear(s, c, target): return c
+	return []
 
 ## Gives every nearby sheriff his part: the lead fights or arrests, the others cover.
 static func _assign(sim: RefCounted, town: int, alert: Dictionary, player: Array) -> void:
@@ -189,7 +212,7 @@ static func _assign(sim: RefCounted, town: int, alert: Dictionary, player: Array
 		if str(alert.phase) == "arrest" and int(npc.id) == lead:
 			if str(arrest.get("phase", "")) != "pursue":
 				npc.cover_cycle = {}
-				npc.arrest = {"phase": "pursue", "since": s.tick, "path_tick": -100, "announce": "Hands where I can see them! You're under arrest!"}
+				npc.arrest = {"phase": "pursue", "since": s.tick, "path_tick": -100, "rush": bool(alert.get("rush", false)), "announce": ("He's down! Go, go!" if bool(alert.get("rush", false)) else "Hands where I can see them! You're under arrest!")}
 				npc.goal = ""
 				npc.path = []
 				npc.status = "Arresting the shooter"
@@ -204,7 +227,14 @@ static func _assign(sim: RefCounted, town: int, alert: Dictionary, player: Array
 			npc.status = "Facing the gunman"
 			npc.cover_cycle = {"phase": "hide", "since": s.tick, "ammo": MAGAZINE, "cover": [], "peek_to": []}
 		elif str(arrest.phase) == "engage" and str(alert.phase) == "arrest" and int(npc.id) != lead:
-			_stand_down(s, npc)
+			if bool(alert.get("rush", false)):
+				# Cover the rush from the side, closing off the way out.
+				var cell: Array = s.entities[str(npc.id)].cell
+				var spot: Array = side_spot(s, cell, player, 1 if responders.find(npc) % 2 == 0 else -1)
+				npc.cover_cycle = {}
+				npc.arrest = {"phase": "backup", "since": s.tick, "flank_spot": spot, "path_tick": -100}
+				npc.status = "Covering the rush"
+			else: _stand_down(s, npc)
 
 ## The lead calls out when the fight changes, so the player can tell what the sheriffs are doing.
 static func _announce(sim: RefCounted, town: int, alert: Dictionary) -> void:
@@ -213,7 +243,7 @@ static func _announce(sim: RefCounted, town: int, alert: Dictionary) -> void:
 	if lead.is_empty():
 		for npc in Law().sheriffs(s, town): lead = npc; break
 	if lead.is_empty(): return
-	var line: String = {"engage": "Shots fired! Take cover!", "hold": "Put the gun down. Now.", "lethal": "That's it! No more warnings!", "arrest": "He's done! Move in!"}.get(str(alert.phase), "")
+	var line: String = {"engage": "Shots fired! Take cover!", "hold": "Put the gun down. Now.", "lethal": "That's it! No more warnings!", "arrest": ("Get him before he gets up!" if bool(alert.get("rush", false)) else "He's done! Move in!")}.get(str(alert.phase), "")
 	if line != "": _shout(sim, lead, line, true)
 
 ## A sheriff shouts, but not over and over: at most once in SHOUT_GAP ticks (unless it matters).
