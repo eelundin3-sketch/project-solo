@@ -132,6 +132,7 @@ const POT := [1, -1]
 const WOODPILE := [8, 2]
 const LOOKOUT := [0, 7]
 const POST := [-5, 3]
+const CAMP_POST := [-3, -1]      # where the one holding the camp crouches when there's no better cover (behind a crate)
 const PATROL := [[0, 7], [-8, 6], [8, 5]]   # the night watch's round
 const ROUTINE := ["sit", "cook", "wood", "watch"]
 ## Solid things round the camp to crouch behind in a fight: the woodpile (beside its fetching
@@ -528,7 +529,7 @@ static func _fight(sim: RefCounted, able: Array, player: Array, from_camp: int, 
 			npc.status = "Hit and out of the fight"
 			continue
 		Gunfire.fight_cycle(sim, npc, b, at, player, {"lethal": bool(b.lethal), "magazine": MAGAZINE_ROUNDS,
-			"role": str(npc.get("fight_role", "front")), "guard": b.cell, "hide_ticks": 10 if str(npc.get("fight_role", "")) == "front" else 16})
+			"role": str(npc.get("fight_role", "front")), "guard": b.cell, "post": _open_near(s, at_camp(b.cell, CAMP_POST)), "hide_ticks": 10 if str(npc.get("fight_role", "")) == "front" else 16})
 		npc.status = _fight_status(npc)
 
 static func _fight_status(npc: Dictionary) -> String:

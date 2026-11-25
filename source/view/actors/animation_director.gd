@@ -123,7 +123,9 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 					result.action = "shoot"
 					result.phase = clampf(float(s.tick - int(gun_cycle.get("since", s.tick))) / 8.0, 0.0, 1.0)
 				"advance": result.action = "gun_carry"
-				_: result.action = "reload" if int(gun_cycle.get("ammo", 1)) <= 0 else "gun_carry"
+				_:
+					result.action = "reload" if int(gun_cycle.get("ammo", 1)) <= 0 else "gun_carry"
+					if result.action == "reload": result.phase = float(s.tick % 12) / 12.0   # the same reload motion as yours
 		return result
 	# The sheriff making an arrest (law.gd): gun drawn, walking up (pointed at you), cuffing, escorting.
 	var arrest: Dictionary = npc.get("arrest", {}) if not npc.is_empty() else {}
@@ -153,6 +155,7 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 						# Holding a gunman who has stopped: the gun stays on him, even while moving in.
 						var holding: bool = str(s.get("law", {}).get("alert", {}).get(str(npc.get("settlement", 0)), {}).get("phase", "")) == "hold"
 						result.action = "reload" if int(cycle.get("ammo", 1)) <= 0 else ("aim" if holding else "gun_carry")
+						if result.action == "reload": result.phase = float(s.tick % 12) / 12.0
 			"backup": result.action = "aim"
 			"assist": result.action = "aim" if not bool(s.get("player_control", {}).get("restrained", false)) else "gun_carry"
 			"pursue": result.action = "combat_idle"
@@ -191,6 +194,13 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		result.action = "surrender"
 		return result
 	# A villager throwing a punch or shove at the player.
+	# A sheriff's (or bandit's) tackle: the same shove you throw (law.gd _pursue, the capture rush).
+	var tackle: Dictionary = npc.get("tackle", {}) if not npc.is_empty() else {}
+	if not tackle.is_empty() and s.tick < int(tackle.end):
+		result.action = "shove"
+		result.target = s.get("player", 0)
+		result.phase = clampf(float(s.tick - int(tackle.start)) / float(int(tackle.end) - int(tackle.start)), 0.0, 1.0)
+		return result
 	var attack: Dictionary = npc.get("attack", {}) if not npc.is_empty() else {}
 	if not attack.is_empty() and s.tick < int(attack.end):
 		result.action = attack.kind
@@ -517,12 +527,16 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 			# Mouse aim follows exactly; other turns ease across the shortest arc.
 			if first or jumped or (entity.kind == "player" and player_aiming):
 				pose.heading = desired
+			elif entity.kind != "player" and action in ["aim", "shoot"]:
+				pose.heading = lerp_angle(float(pose.get("heading", desired)), desired, clampf(dt * 22.0, 0.0, 1.0))   # swing onto the target fast
 			else:
 				pose.heading = lerp_angle(float(pose.get("heading", desired)), desired, clampf(dt * 12.0, 0.0, 1.0))
 		pose.facing = -1.0 if cos(float(pose.heading)) < 0.0 else 1.0
 		pose.back = sin(float(pose.heading)) < -0.35
-		pose.aiming = entity.kind == "player" and player_aiming
-		pose.bloom = int(s.get("shotgun", {}).get("bloom", 0)) if entity.kind == "player" else 0
+		# NPCs aiming or firing point the gun exactly at their target, as you do, and feel the kick.
+		var npc_aiming: bool = entity.kind != "player" and action in ["aim", "shoot"] and s.entities.has(str(state_action.target))
+		pose.aiming = (entity.kind == "player" and player_aiming) or npc_aiming
+		pose.bloom = int(s.get("shotgun", {}).get("bloom", 0)) if entity.kind == "player" else (300 if action == "shoot" else 0)
 		# A useless leg drags; a hurt one (not yet useless) still makes you favour it.
 		var hurt_left: bool = Limbs.state(s, int(entity.id), "left_leg") != "ok"
 		var hurt_right: bool = Limbs.state(s, int(entity.id), "right_leg") != "ok"

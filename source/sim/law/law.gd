@@ -382,6 +382,7 @@ static func _pursue(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: 
 		Brawl.knockdown(s, s.player_control, player, "fall", direction)
 		Brawl.event(s, "shove_hit", player, direction)
 		s.player_control.notice = "%s tackles you to the ground!" % s.entities[str(npc.id)].name
+		npc.tackle = {"start": s.tick, "end": s.tick + 10}   # drawn as a shove (animation_director.gd)
 		s.player_path = []
 		arrest.next_grab = s.tick + 20
 

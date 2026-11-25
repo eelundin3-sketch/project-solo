@@ -59,7 +59,8 @@ static func say(sim: RefCounted, speaker: int, topic: String, extra: String = ""
 
 static func _idle(s: Dictionary, npc: Dictionary) -> bool:
 	return npc.health > 0 and npc.get("knock", {}).is_empty() and npc.get("brawl", {}).is_empty() and npc.get("attack", {}).is_empty() \
-		and npc.get("sleeping", {}).is_empty() and npc.get("migration", {}).is_empty() and s.tick >= int(npc.get("talk_until", 0)) and npc.occupation != "Trader"
+		and npc.get("sleeping", {}).is_empty() and npc.get("migration", {}).is_empty() and s.tick >= int(npc.get("talk_until", 0)) and npc.occupation not in ["Trader", "Bandit"] \
+		and npc.get("cover_cycle", {}).is_empty() and npc.get("fear", {}).is_empty() and npc.get("arrest", {}).is_empty() and npc.get("reporting", {}).is_empty() and npc.get("collar", {}).is_empty()   # nobody chats about the weather mid-gunfight
 
 ## Every 120 ticks: expire old bubbles, let two idle neighbours chat, and greet the player.
 static func update(sim: RefCounted) -> void:

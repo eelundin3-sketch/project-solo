@@ -279,11 +279,19 @@ static func fight_cycle(sim: RefCounted, npc: Dictionary, squad: Dictionary, cel
 	var age: int = s.tick - int(cycle.since)
 	match str(cycle.phase):
 		"hide":
-			# Make sure there is cover to hide in and a clear shot from its corner.
-			if cycle.cover.is_empty() or not Cover.is_cover(s, cycle.cover):
+			# Make sure there is cover to hide in and a clear shot from its corner (not one a partner
+			# already holds: two never crowd the same crate). A flanker holds his spot round the side.
+			if (cycle.cover.is_empty() or not Cover.is_cover(s, cycle.cover) or (cycle.cover in _taken(s, npc) and cell != cycle.cover)) and not bool(cycle.get("stay", false)):
 				# Already behind something the gunman cannot see past: stay put and work from here.
-				if Cover.is_cover(s, cell) and not Cover.line_clear(s, cell, player, true, false): cycle.cover = cell.duplicate()
-				else: cycle.cover = find_cover(s, cell, player, false, cycle.get("blocked", []))   # caught in the open: get behind something, fast
+				if Cover.is_cover(s, cell) and not Cover.line_clear(s, cell, player, true, false) and not cell in _taken(s, npc): cycle.cover = cell.duplicate()
+				else:
+					# Caught in the open: get behind something, fast (the one holding the camp looks round it).
+					var near: Array = opts.get("guard", cell) if role == "camp" else cell
+					cycle.cover = find_cover(s, near, player, false, cycle.get("blocked", []), _taken(s, npc))
+					if cycle.cover.is_empty() and role == "camp": cycle.cover = find_cover(s, cell, player, false, cycle.get("blocked", []), _taken(s, npc))
+					if cycle.cover.is_empty() and role == "camp" and not opts.get("post", []).is_empty():
+						cycle.cover = opts.post.duplicate()   # nothing better: his set place behind the crates
+						cycle.stay = true
 			if not cycle.cover.is_empty() and cell != cycle.cover:
 				_run_to(s, npc, cycle.cover)
 				if npc.path.is_empty() and s.entities[str(npc.id)].cell != cycle.cover:
@@ -321,7 +329,7 @@ static func fight_cycle(sim: RefCounted, npc: Dictionary, squad: Dictionary, cel
 				var distance: float = Vector2(player[0] - cell[0], player[1] - cell[1]).length()
 				# Out of reach of his shotgun: close in, cover to cover, or straight in at a crouch.
 				if distance > SHOOT_RANGE and _may_move(s, alert, npc):
-					var nearer: Array = next_cover(s, cell, player)
+					var nearer: Array = next_cover(s, cell, player, _taken(s, npc))
 					if nearer.is_empty(): nearer = _toward(s, cell, player, SHOOT_RANGE - 3)
 					if not nearer.is_empty():
 						_start_advance(s, alert, npc, cycle, nearer, "Closing in on the gunman")
@@ -337,13 +345,13 @@ static func fight_cycle(sim: RefCounted, npc: Dictionary, squad: Dictionary, cel
 						_shout(sim, npc, ["I'll go round!", "Flanking left!", "Keep him busy, I'm going round!"][int(npc.id) % 3], true)
 						return
 				var corner: Array = Cover.peek_cell(s, cell, Vector2(player[0] - cell[0], player[1] - cell[1])) if not cycle.cover.is_empty() else cell.duplicate()
-				if cycle.cover.is_empty(): corner = cell.duplicate()
+				if cycle.cover.is_empty() or bool(cycle.get("stay", false)): corner = cell.duplicate()
 				var no_view: bool = corner.is_empty() or not Cover.line_clear(s, corner, player, false, Cover.player_low(s))
 				var too_far: bool = Vector2(player[0] - cell[0], player[1] - cell[1]).length() > ADVANCE_BEYOND and int(cycle.get("shots_here", 0)) >= SHOTS_BEFORE_ADVANCE
 				if no_view or too_far:
 					# Work closer one cover at a time, only while it is safe to move, one sheriff at a time.
-					var next: Array = next_cover(s, cell, player)
-					if next.is_empty() and no_view: next = find_cover(s, cell, player, true)   # a cover to one side that sees them
+					var next: Array = next_cover(s, cell, player, _taken(s, npc))
+					if next.is_empty() and no_view: next = find_cover(s, cell, player, true, [], _taken(s, npc))   # a cover to one side that sees them
 					if not next.is_empty() and _may_move(s, alert, npc):
 						cycle.phase = "advance"
 						cycle.target = next
@@ -385,14 +393,17 @@ static func fight_cycle(sim: RefCounted, npc: Dictionary, squad: Dictionary, cel
 			# Low and slow between covers; back to hiding on arrival (or if it takes too long).
 			var arrived: bool = cell == cycle.target
 			if arrived and bool(cycle.get("flank", false)):
-				# Round the side: a clear line past the gunman's cover. Shoot from here.
+				# Round the side: a clear line past the gunman's cover. He holds this spot and shoots from it.
 				cycle.flank = false
+				cycle.cover = cell.duplicate()
+				cycle.stay = true
 				cycle.phase = "peek"
 				cycle.peek_to = cell.duplicate()
 				cycle.since = s.tick
 				if int(alert.get("mover", 0)) == int(npc.id): alert.mover = 0
 				return
 			if arrived or age > 150 or (Bleeding.bleeding(npc) and Inventory.amount(s, int(npc.id), "bandage") > 0):
+				cycle.stay = false
 				cycle.phase = "hide"
 				cycle.cover = cycle.target.duplicate() if arrived and Cover.is_cover(s, cycle.target) else []
 				cycle.since = s.tick
@@ -459,7 +470,7 @@ static func _flank_spot(s: Dictionary, from: Array, target: Array) -> Array:
 
 ## The next cover towards the gunman: hidden from them, with a corner that sees them, nearer than
 ## where the sheriff is now (but not on top of them), and a short walk away. [] if there is none.
-static func next_cover(s: Dictionary, from: Array, target: Array) -> Array:
+static func next_cover(s: Dictionary, from: Array, target: Array, taken: Array = []) -> Array:
 	var here: float = Vector2(target[0] - from[0], target[1] - from[1]).length()
 	var best: Array = []
 	var best_score := 1.0e9
@@ -467,7 +478,7 @@ static func next_cover(s: Dictionary, from: Array, target: Array) -> Array:
 		for dx in range(-COVER_SEARCH, COVER_SEARCH + 1):
 			if dx == 0 and dy == 0: continue
 			var cell: Array = [from[0] + dx, from[1] + dy]
-			if not Cover.is_cover(s, cell) or not World.walkable(s, cell): continue
+			if cell in taken or not Cover.is_cover(s, cell) or not World.walkable(s, cell): continue
 			var look := Vector2(target[0] - cell[0], target[1] - cell[1])
 			if look.length() < 4.0 or look.length() > here - 1.5 or look.length() > SHOOT_RANGE + 6.0: continue
 			if Cover.line_clear(s, cell, target, true, false): continue   # in the open from where the gunman stands (a sheriff in cover crouches)
@@ -498,6 +509,21 @@ static func _hands_ok(s: Dictionary, npc: Dictionary) -> bool:
 static func Limbs_crawling(s: Dictionary, npc: Dictionary) -> bool:
 	return load("res://sim/combat/limbs.gd").crawling(s, int(npc.id))
 
+## Cover cells the fighter's partners hold or are making for (and where they stand), nearby.
+static func _taken(s: Dictionary, npc: Dictionary) -> Array:
+	var result: Array = []
+	var here: Array = s.entities[str(npc.id)].cell
+	for other in s.get("residents", {}).values():
+		if int(other.id) == int(npc.id): continue
+		var cycle: Dictionary = other.get("cover_cycle", {})
+		if cycle.is_empty(): continue
+		var at: Array = s.entities[str(other.id)].cell
+		if absi(at[0] - here[0]) > 24 or absi(at[1] - here[1]) > 24: continue
+		result.append(at)
+		if not cycle.get("cover", []).is_empty(): result.append(cycle.cover)
+		if not cycle.get("target", []).is_empty(): result.append(cycle.target)
+	return result
+
 ## Where a fighter keeps his path bookkeeping: a sheriff's arrest record, else his cover cycle.
 static func _memo(npc: Dictionary) -> Dictionary:
 	var arrest: Dictionary = npc.get("arrest", {})
@@ -516,14 +542,14 @@ static func _run_to(s: Dictionary, npc: Dictionary, goal: Array) -> void:
 
 ## The best cover near `from` against a shooter at `target`: a cover cell the shooter cannot see,
 ## with a corner from which the shooter can be seen. [] if there is none.
-static func find_cover(s: Dictionary, from: Array, target: Array, avoid_current: bool = false, blocked: Array = []) -> Array:
+static func find_cover(s: Dictionary, from: Array, target: Array, avoid_current: bool = false, blocked: Array = [], taken: Array = []) -> Array:
 	var best: Array = []
 	var best_score := 1.0e9
 	for dy in range(-COVER_SEARCH, COVER_SEARCH + 1):
 		for dx in range(-COVER_SEARCH, COVER_SEARCH + 1):
 			var cell: Array = [from[0] + dx, from[1] + dy]
 			if avoid_current and dx == 0 and dy == 0: continue
-			if cell == blocked or not Cover.is_cover(s, cell): continue
+			if cell == blocked or cell in taken or not Cover.is_cover(s, cell): continue
 			var look: Vector2 = Vector2(target[0] - cell[0], target[1] - cell[1])
 			if look.length() > SHOOT_RANGE or look.length() < 3.0: continue
 			if Cover.line_clear(s, cell, target, true, false): continue   # still in the open: not cover from them
