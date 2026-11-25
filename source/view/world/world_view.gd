@@ -249,7 +249,7 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	t = _lap("v:animation_director", t)
 	var player_key := str(simulation.state.get("player", 0))
 	var player_point: Vector2 = motion.actors.get(player_key, {}).get("position", Vector2.ZERO)
-	roofs_layer.sync(self, simulation.state, player_point, is_far())
+	var roofs_changed: bool = roofs_layer.sync(self, simulation.state, player_point, is_far())
 	if is_far() != decor_far:
 		# Zoomed far out, a building is just its roof: its floor image is not drawn.
 		decor_far = is_far()
@@ -259,7 +259,10 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	t = _lap("v:characters_sync", t)
 	if not paused: atmosphere_time += minf(delta, 0.1) * speed
 	fixture_motion.update(simulation.state,delta,paused,speed)
+	roofs_layer.animate_smoke(fixture_motion.running, atmosphere_time)
+	var depth_count: int = depth_objects.size()
 	_sync_depth_objects()
+	if roofs_changed or depth_objects.size() != depth_count: _hide_roofed_doors()
 	t = _lap("v:depth_sync", t)
 	_update_doors(minf(delta, 0.1))
 	t = _lap("v:doors", t)
@@ -877,6 +880,13 @@ func _draw_travel_goal(s: Dictionary) -> void:
 
 func atime_for_marker() -> float:
 	return atmosphere_time
+
+## The doors of buildings seen from outside are drawn on their front walls (roofs.gd): the
+## floor-plan door nodes underneath are hidden.
+func _hide_roofed_doors() -> void:
+	for key in depth_objects:
+		var node = depth_objects[key]
+		if node.object_kind == "door": node.visible = not roofs_layer.roofed(node.entity_id)
 
 ## A wanted notice on a board by the door of each office whose town wants you: a sketch of the
 ## stranger in the clothes witnesses described (or your face, if a sheriff saw you).

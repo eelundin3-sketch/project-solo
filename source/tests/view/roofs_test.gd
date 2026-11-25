@@ -40,6 +40,34 @@ func run() -> void:
 		if roofs.nodes.has(int(b.id)) and roofs.nodes[int(b.id)].visible: roofed += 1
 	check(finished > 0 and roofed == finished, "Outside, every finished building is roofed (%d of %d)" % [roofed, finished])
 
+	# Buildings stand taller than people; their floor-plan doors are hidden under the walls.
+	var Roofs = load("res://view/world/roofs.gd")
+	var shortest := 1000.0
+	for id in roofs.nodes: shortest = minf(shortest, roofs.nodes[id].height)
+	check(shortest >= Roofs.PERSON_HEIGHT * 1.4, "Every building is at least 1.4 times a person's height (%.0f)" % shortest)
+	var doors_shown := 0
+	for key in world.depth_objects:
+		var node = world.depth_objects[key]
+		if node.object_kind == "door" and roofs.roofed(node.entity_id) and node.visible: doors_shown += 1
+	check(doors_shown == 0, "Doors of roofed buildings are drawn on their walls, not the floor plan (%d shown)" % doors_shown)
+	# Behind a building: it fades so you can see yourself.
+	var behind: Dictionary = {}
+	var spot: Array = []
+	for b in World.buildings(s):
+		if not b.has("footprint") or not roofs.nodes.has(int(b.id)): continue
+		var r: Rect2i = World.building_rect(b)
+		for x in range(r.position.x + 1, r.end.x - 1):
+			var c: Array = [x, r.position.y - 1]
+			if World.walkable(s, c) and World.inside_building(s, c) == 0: spot = c; break
+		if not spot.is_empty(): behind = b; break
+	player.cell = spot
+	await frames(main, 0.8, Vector2(spot[0], spot[1]) * 24)
+	check(roofs.nodes[int(behind.id)].modulate.a < 0.5, "Standing behind a building, it fades")
+	check(roofs.nodes[int(behind.id)].visible, "...but stays drawn")
+	player.cell = [store[0], store[1] + 4]
+	while World.inside_building(s, player.cell) != 0: player.cell = [player.cell[0], player.cell[1] + 1]
+	await frames(main, 0.8, Vector2(player.cell[0], player.cell[1]) * 24)
+
 	# Someone inside a roofed building is not drawn: put a nearby townsperson indoors.
 	var shop: Dictionary = s.entities[str(s.settlements["1"].warehouse)]
 	var indoor: Array = []
