@@ -53,6 +53,7 @@ const FamilyEconomy = preload("res://sim/entities/family_economy.gd")
 const StallService = preload("res://sim/economy/stall_service.gd")
 const Light = preload("res://sim/world/light.gd")
 const Bandits = preload("res://sim/factions/bandits.gd")
+const OutlawArrest = preload("res://sim/law/outlaw_arrest.gd")
 const Capital = preload("res://sim/settlement/capital.gd")
 const Reinforcements = preload("res://sim/law/reinforcements.gd")
 ## Commands that are the player doing something: refused while down or restrained, and they wake
@@ -166,6 +167,7 @@ func step() -> void:
 		Probe.mark("brawl")
 		Law.update(self)
 		Bandits.update(self)
+		OutlawArrest.update(self)   # bandits in town, and the sheriffs bringing them in
 		Reinforcements.update(self)
 		Probe.mark("law")
 		Gunfire.update(self)

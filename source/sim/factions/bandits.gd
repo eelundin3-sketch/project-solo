@@ -28,6 +28,8 @@ const ROPE_TICKS := 300          # working the ropes loose takes about half an h
 const WATCH_HEARS := 4           # the watch hears you at the ropes this close
 const STASH_GUARD := 3           # this close to their loot pile and they'll stop you
 const NIGHT_NOTICE := 6          # an awake bandit's notice range in the dark (less if you crouch)
+const SUPPLY_HOUR := 9          # supply runs set off at nine...
+const SUPPLY_EVERY_DAYS := 3     # ...every third day
 const MAGAZINE_ROUNDS := 5       # shots before a reload
 const LOOT := ["rifle", "shotgun", "cartridge", "shell", "lantern"]
 const LINES := {
@@ -38,6 +40,7 @@ const LINES := {
 	"fight": ["Wrong choice!", "Get him!", "You'll regret that!"],
 	"give_up": ["Let him run.", "Not worth the bullets.", "And stay away!"],
 	"beaten": ["Don't shoot! We're done!", "Enough! You win!", "All right, all right! I give up!"],
+	"errand": ["I'll fetch the supplies. Back by noon.", "Somebody's got to get the coffee.", "Going to town. Keep the fire going."],
 	"flee": ["I'm getting out of here!", "Every man for himself!", "Not dying for this!"],
 	"chat": ["Quiet out here.", "Pass the coffee.", "Reckon a caravan's due soon.", "My boots are falling apart.", "Who's on watch tonight?", "Fine evening for it."],
 }
@@ -198,7 +201,8 @@ static func update(sim: RefCounted) -> void:
 	var camp: Array = b.cell
 	var from_camp: int = maxi(absi(player[0] - camp[0]), absi(player[1] - camp[1]))
 	var members: Array = _members(s)
-	var able: Array = members.filter(func(n: Dictionary) -> bool: return _able(s, n))
+	var Outlaws = load("res://sim/law/outlaw_arrest.gd")
+	var able: Array = members.filter(func(n: Dictionary) -> bool: return _able(s, n) and not Outlaws.away(n))   # not off in town or in jail
 	if able.is_empty() or (_fighters(s, able).is_empty() and str(b.phase) != "idle"):
 		_cleared(sim)
 		return
@@ -241,6 +245,15 @@ static func _idle(sim: RefCounted, able: Array) -> void:
 	var s: Dictionary = sim.state
 	var spot: Array = s.bandits.cell
 	var hour: int = DayClock.hour(s)
+	# Every third morning one of them (never the leader) walks into the nearest town for supplies.
+	if s.tick % 600 == 0 and hour == SUPPLY_HOUR and (int(s.tick) / 14400) % SUPPLY_EVERY_DAYS == 1 and able.size() >= 2:
+		var helpers: Array = able.filter(func(n: Dictionary) -> bool: return int(n.id) != int(s.bandits.leader))
+		if not helpers.is_empty():
+			var runner: Dictionary = helpers[(int(s.tick) / 14400 / SUPPLY_EVERY_DAYS) % helpers.size()]
+			var Outlaws = load("res://sim/law/outlaw_arrest.gd")
+			if Outlaws.send(s, runner, Outlaws.nearest_town(s, spot), "supply"):
+				_say(sim, runner, "errand")
+				able = able.filter(func(n: Dictionary) -> bool: return int(n.id) != int(runner.id))
 	for npc in able:
 		var index: int = s.bandits.members.find(int(npc.id))
 		var entity: Dictionary = s.entities[str(npc.id)]
@@ -525,6 +538,7 @@ static func _morale(sim: RefCounted, able: Array) -> void:
 	var down := 0
 	var leader_down := true
 	for npc in members:
+		if load("res://sim/law/outlaw_arrest.gd").away(npc): continue   # not here: neither fighting nor down
 		var out: bool = not _able(s, npc) or bool(npc.get("out_of_fight", false))
 		if out: down += 1
 		elif int(npc.id) == int(b.leader): leader_down = false
@@ -566,6 +580,7 @@ static func _home(sim: RefCounted, phase: String) -> void:
 	var members: Array = _members(s)
 	for i in range(members.size()):
 		var npc: Dictionary = members[i]
+		if load("res://sim/law/outlaw_arrest.gd").away(npc): continue   # off in town or in jail
 		npc.path = []
 		npc.erase("fight_cover")
 		npc.erase("gun_out")
@@ -747,6 +762,7 @@ static func _cleared(sim: RefCounted) -> void:
 	b.cleared = true
 	b.phase = "cleared"
 	for npc in _members(s):
+		if load("res://sim/law/outlaw_arrest.gd").away(npc): continue
 		npc.erase("gun_out")
 		npc.erase("cover_cycle")
 	b.since = s.tick
@@ -764,6 +780,12 @@ static func _beaten_life(s: Dictionary) -> void:
 	_run_off(s, members)
 	for i in range(members.size()):
 		var npc: Dictionary = members[i]
+		if load("res://sim/law/outlaw_arrest.gd").away(npc): continue
+		if not npc.get("fleeing", []).is_empty() and _able(s, npc) and s.entities[str(npc.id)].cell == npc.fleeing and s.tick - int(s.bandits.since) > 600:
+			# A runaway from a beaten gang drifts into the nearest town.
+			var Outlaws = load("res://sim/law/outlaw_arrest.gd")
+			if Outlaws.send(s, npc, Outlaws.nearest_town(s, npc.fleeing), "drifter"): npc.erase("fleeing")
+			continue
 		if not _able(s, npc) or not npc.get("fleeing", []).is_empty() or npc.has("captor"): continue
 		var at: Array = s.entities[str(npc.id)].cell
 		if bool(npc.get("surrendered", false)) and maxi(absi(at[0] - player[0]), absi(at[1] - player[1])) <= 15: continue
@@ -772,6 +794,7 @@ static func _beaten_life(s: Dictionary) -> void:
 ## Bandits running for it: a step every tick towards their spot; there they stop and wait it out.
 static func _run_off(s: Dictionary, members: Array) -> void:
 	for npc in members:
+		if load("res://sim/law/outlaw_arrest.gd").away(npc): continue
 		var spot: Array = npc.get("fleeing", [])
 		if spot.is_empty() or not _able(s, npc): continue
 		if s.entities[str(npc.id)].cell == spot:

@@ -66,8 +66,9 @@ static func update(sim: RefCounted) -> void:
 		# A sheriff in a gunfight binds his wounds behind cover (gunfire.gd); someone running for
 		# cover waits until they get there.
 		if str(npc.get("arrest", {}).get("phase", "")) == "engage": continue
+		if not npc.get("cover_cycle", {}).is_empty() or not npc.get("collar", {}).is_empty(): continue   # mid-fight (bandits, a shootout with an outlaw)
 		if not npc.get("fear", {}).is_empty() and not bool(npc.fear.get("arrived", false)): continue
 		if Inventory.amount(s, int(npc.id), "bandage") > 0:
 			begin(s, npc)
-		elif npc.get("goal", "") != "bandage" and npc.get("fear", {}).is_empty() and npc.get("arrest", {}).is_empty() and can_bandage(s, npc) and s.tick >= int(npc.get("retry_at", 0)):
+		elif int(npc.get("settlement", 0)) != 0 and npc.get("goal", "") != "bandage" and npc.get("fear", {}).is_empty() and npc.get("arrest", {}).is_empty() and can_bandage(s, npc) and s.tick >= int(npc.get("retry_at", 0)):
 			load("res://sim/entities/residents.gd").set_goal(s, npc, "bandage")

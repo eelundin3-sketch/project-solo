@@ -225,6 +225,7 @@ static func update(sim: RefCounted) -> void:
 		var npc: Dictionary = s.residents[key]
 		if npc.occupation != "Sheriff": continue
 		if not npc.get("reinforcing", {}).is_empty() and load("res://sim/law/reinforcements.gd").busy(npc): continue   # on the road or visiting (reinforcements.gd)
+		if not npc.get("collar", {}).is_empty(): continue   # bringing in an outlaw (outlaw_arrest.gd)
 		if npc.health <= 0:
 			if not npc.get("arrest", {}).is_empty(): _abandon(sim, npc)
 			continue

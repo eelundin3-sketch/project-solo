@@ -73,6 +73,22 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		result.action = "stagger" if npc.get("impact_kind", "") == "shove" else "hit"
 		result.phase = 1.0 - float(npc.impact_until - s.tick) / 12.0
 		return result
+	# A sheriff bringing in an outlaw (outlaw_arrest.gd): gun on him, cuffs, the walk to the cell.
+	if not npc.is_empty() and not npc.get("collar", {}).is_empty():
+		var collar: Dictionary = npc.collar
+		result.target = int(collar.bandit)
+		match str(collar.phase):
+			"cuff":
+				result.action = "cuff"
+				result.phase = clampf(float(s.tick - int(collar.since)) / 30.0, 0.0, 1.0)
+			"escort": result.action = "escort"
+			"duel": result.action = "aim"
+			_: result.action = "aim"
+		return result
+	# An outlaw in cuffs.
+	if not npc.is_empty() and bool(npc.get("cuffed", false)):
+		result.action = "cuffed"
+		return result
 	# A bandit taking you to the post: hauling you up, then leading you by the arm.
 	if not npc.is_empty() and not npc.get("captor", {}).is_empty():
 		result.target = s.get("player", 0)
@@ -533,7 +549,7 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 			action = pose.handling
 			state_action.phase = pose.handling_age / 0.5
 		# An armed upper-body pose can play over the walking or running legs.
-		var lawman_armed: bool = str(s.get("residents", {}).get(key, {}).get("arrest", {}).get("phase", "")) in ["standoff", "approach", "engage", "backup", "assist"] or bool(s.get("residents", {}).get(key, {}).get("gun_out", false))
+		var lawman_armed: bool = str(s.get("residents", {}).get(key, {}).get("arrest", {}).get("phase", "")) in ["standoff", "approach", "engage", "backup", "assist"] or bool(s.get("residents", {}).get(key, {}).get("gun_out", false)) or not s.get("residents", {}).get(key, {}).get("collar", {}).is_empty()
 		var gun_pose := (gun_equipped or lawman_armed) and action in ["gun_carry", "aim", "reload", "shoot"]
 		if pose.moving and not gun_pose and action not in ["punch", "shove", "kick", "hit", "stagger", "down", "fall", "getup", "rest", "cuffed", "escort", "surrender", "cuff", "pin", "lift", "search", "crawl", "sit", "cook", "tied"]:
 			action = "run" if sprinting else ("carry" if quantity > 0 else "walk")

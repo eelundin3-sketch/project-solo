@@ -176,7 +176,7 @@ static func _assign(sim: RefCounted, town: int, alert: Dictionary, player: Array
 	for npc in Law().sheriffs(s, town):
 		var cell: Array = s.entities[str(npc.id)].cell
 		var d: float = Vector2(cell[0] - player[0], cell[1] - player[1]).length()
-		if d > HEAR_RANGE or Brawl.knocked(s, npc): continue
+		if d > HEAR_RANGE or Brawl.knocked(s, npc) or not npc.get("collar", {}).is_empty(): continue
 		var phase: String = str(npc.get("arrest", {}).get("phase", ""))
 		if phase in ["cuff", "lift", "escort", "book", "lock", "fetch", "unlock", "return"]: continue   # already taking someone in
 		responders.append(npc)
