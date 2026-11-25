@@ -135,7 +135,7 @@ static func try_claim(state: Dictionary, job_id: int, npc_id: int) -> bool:
 		job.reason = "STORE_FULL"
 		job.retry_at = state.tick + 100
 		return false
-	var route := Nav.request_path(state, state.entities[str(npc_id)].cell, source_stance(state, job))
+	var route := Nav.request_walk_path(state, state.entities[str(npc_id)].cell, source_stance(state, job))
 	if not route.ok:
 		Inventory.release(state, job.destination, str(job.id))
 		job.reason = route.error_code
@@ -204,7 +204,7 @@ static func advance(sim: RefCounted, npc_id: int) -> void:
 	if npc.nav_revision != s.world.nav_revision:
 		var goal: Array = World.Fixtures.interaction_cell(s, job.destination) if job.state in ["MOVING_TO_DEST", "DEPOSITING"] else source_stance(s, job)
 		var keeps: bool = (npc.path.is_empty() and actor.cell == goal) or (not npc.path.is_empty() and npc.path.back() == goal and Nav.still_clear(s, npc.path))
-		var route := {"ok": true, "path": npc.path} if keeps else Nav.request_path(s, actor.cell, goal)
+		var route := {"ok": true, "path": npc.path} if keeps else Nav.request_walk_path(s, actor.cell, goal)
 		if not route.ok:
 			release(s, job.id, route.error_code)
 			return
@@ -236,7 +236,7 @@ static func advance(sim: RefCounted, npc_id: int) -> void:
 			if not moved.ok:
 				release(s, job.id, moved.error_code)
 				return
-			var route := Nav.request_path(s, actor.cell, World.Fixtures.interaction_cell(s, job.destination))
+			var route := Nav.request_walk_path(s, actor.cell, World.Fixtures.interaction_cell(s, job.destination))
 			if not route.ok:
 				release(s, job.id, route.error_code)
 				return

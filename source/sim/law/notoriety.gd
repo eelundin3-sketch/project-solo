@@ -114,7 +114,7 @@ static func search(s: Dictionary, sheriff: Dictionary) -> void:
 		sheriff.status = "Lost the trail"
 		return
 	if sheriff.path.is_empty() or s.tick - int(look.path_tick) >= 30:
-		var route: Dictionary = load("res://sim/movement/navigation.gd").request_path(s, here, look.cell)
+		var route: Dictionary = load("res://sim/movement/navigation.gd").request_walk_path(s, here, look.cell)
 		sheriff.path = route.path.slice(1) if route.ok else []
 		look.path_tick = s.tick
 		if not route.ok:

@@ -227,7 +227,7 @@ static func _walk(s: Dictionary, sheriff: Dictionary, job: Dictionary, goal: Arr
 	if s.tick < int(job.next_step): return
 	var me: Array = s.entities[str(sheriff.id)].cell
 	if sheriff.path.is_empty() or s.tick - int(job.path_tick) >= 40:
-		var route: Dictionary = Nav.request_path(s, me, goal)
+		var route: Dictionary = Nav.request_walk_path(s, me, goal)
 		sheriff.path = route.path.slice(1) if route.ok else []
 		job.path_tick = s.tick
 		if not route.ok:

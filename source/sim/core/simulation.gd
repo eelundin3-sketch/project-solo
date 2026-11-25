@@ -223,7 +223,7 @@ func step() -> void:
 				state.player_path = []
 				if not destination.is_empty():
 					var by_road: bool = int(state.player_control.get("travelling", 0)) != 0
-					var reroute := Navigation.request_travel_path(state, state.entities[str(state.player)].cell, destination) if by_road else Navigation.request_path(state, state.entities[str(state.player)].cell, destination)
+					var reroute := Navigation.request_travel_path(state, state.entities[str(state.player)].cell, destination) if by_road else Navigation.request_walk_path(state, state.entities[str(state.player)].cell, destination)
 					if reroute.ok: state.player_path = reroute.path
 		Probe.mark("local_combat+route")
 		if state.tick % 10 == 0:
@@ -394,7 +394,7 @@ func apply_command(entry: Dictionary) -> void:
 					for dx in range(-2, 3):
 						var candidate: Array = [goal[0] + dx, goal[1] + dy]
 						if World.walkable(state, candidate) and absi(dx) + absi(dy) < best: best = absi(dx) + absi(dy); target = candidate
-			var route := Navigation.request_path(state, from, target)
+			var route := Navigation.request_walk_path(state, from, target)
 			state.player_control.pending = {}
 			if route.ok and not route.path.is_empty():
 				state.player_path = route.path

@@ -9,10 +9,14 @@ const DerivedCache = preload("res://sim/core/derived_cache.gd")
 const TownLayout = preload("res://sim/world/town_layout.gd")
 static var _grids: Array = []
 static var _travel: Array = []
+static var _street: Array = []
 ## Weights for the travel grid: a road's centre costs 1, the rest of its corridor 1.5, open
 ## country 3, so long walks keep to the roads unless leaving them saves a great deal.
 const OFF_ROAD := 3.0
 const ROAD_EDGE := 1.5
+## Weights for the street grid (everyday walks): milder, so a short way across a yard still wins.
+const STREET_OFF_ROAD := 1.6
+const STREET_EDGE := 1.2
 
 ## What the grid was built from. Any write that changes walkability either bumps nav_revision or
 ## changes one of the three tables' sizes (or replaces a table), so this catches every change.
@@ -56,9 +60,17 @@ static func grid(state: Dictionary) -> AStarGrid2D:
 ## The same walkability with road preference, for long trips. Rebuilt when walkability or the
 ## roads change; like grid(), derived from the state and never saved.
 static func travel_grid(state: Dictionary) -> AStarGrid2D:
+	return _weighted(state, _travel, OFF_ROAD, ROAD_EDGE, "travel_grid_rebuild")
+
+## The same walkability with a milder road preference, for everyday walks about town: people join
+## the nearest road and follow it, cutting across only when that saves a fair bit.
+static func street_grid(state: Dictionary) -> AStarGrid2D:
+	return _weighted(state, _street, STREET_OFF_ROAD, STREET_EDGE, "street_grid_rebuild")
+
+static func _weighted(state: Dictionary, holder: Array, off_road: float, edge: float, probe: String) -> AStarGrid2D:
 	var sig := _signature(state)
 	sig.append(TownLayout.road_signature(state))
-	var cache: Dictionary = DerivedCache.slot(_travel, state.world)
+	var cache: Dictionary = DerivedCache.slot(holder, state.world)
 	if cache.get("signature") == sig: return cache.astar
 	var started := Time.get_ticks_usec()
 	var base := grid(state)
@@ -73,20 +85,21 @@ static func travel_grid(state: Dictionary) -> AStarGrid2D:
 	astar.update()
 	var region: Rect2i = base.region
 	astar.fill_solid_region(region, false)
-	astar.fill_weight_scale_region(region, OFF_ROAD)
+	astar.fill_weight_scale_region(region, off_road)
 	var roads := TownLayout.road_map(state)
 	for key in roads.kind:
 		var cell := _parse(key)
-		if region.has_point(cell): astar.set_point_weight_scale(cell, 1.0 if roads.centre.has(key) else ROAD_EDGE)
+		if region.has_point(cell): astar.set_point_weight_scale(cell, 1.0 if roads.centre.has(key) else edge)
 	for table in [state.world.blocked, state.world.get("building_walls", {}), state.world.get("fixture_cells", {})]:
 		for key in table:
 			var cell := _parse(key)
 			if region.has_point(cell): astar.set_point_solid(cell, true)
 	cache.signature = sig
-	Probe.add("travel_grid_rebuild", Time.get_ticks_usec() - started)
+	Probe.add(probe, Time.get_ticks_usec() - started)
 	return astar
 
 ## Forget the grids (tests that swap worlds in place can call this; normal play never needs to).
 static func reset() -> void:
 	_grids.clear()
 	_travel.clear()
+	_street.clear()

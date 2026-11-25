@@ -1,4 +1,5 @@
 extends RefCounted
+const Pace = preload("res://sim/movement/pace.gd")
 const DayClock = preload("res://sim/world/day_clock.gd")
 const Capital = preload("res://sim/settlement/capital.gd")
 const Reinforcements = preload("res://sim/law/reinforcements.gd")
@@ -73,22 +74,35 @@ static func update(sim: RefCounted) -> void:
 		if step > 2 and npc.job != 0 and Limbs.crawling(s, npc.id):
 			Jobs.release(s, npc.job, "CRAWLING")   # nobody works on their belly
 		if step > 2 and s.tick % step != 0: continue   # a limp or a crawl: far fewer steps
-		if s.tick % cadence == 0:
-			if npc.job != 0:
-				Jobs.advance_many(sim, npc.id, cadence / 2)
-			elif not npc.goal.is_empty():
-				var actions: int = cadence / 2 if step <= 2 else 1
-				var distance: int = mini(actions, npc.path.size())
-				if distance > 0 and npc.nav_revision != s.world.nav_revision and Nav.still_clear(s, npc.path):
-					npc.nav_revision = s.world.nav_revision   # the world changed elsewhere; this route is still open
-				if distance > 0 and npc.nav_revision == s.world.nav_revision:
-					s.entities[str(npc.id)].cell = npc.path[distance - 1]
-					npc.path = npc.path.slice(distance)
-					actions -= distance
-				if actions > 0:
-					if npc.goal == "rest" and npc.path.is_empty():
-						npc.fatigue = maxi(10, npc.fatigue - actions + 1)
-					_need_action(sim, npc)
+		# Townsfolk near the player step on their own timer: every 2 ticks off the roads, quicker on
+		# them (pace.gd: about 15% in a town street, 30% on the roads between towns, slower in mud).
+		var own_pace: bool = npc.fidelity == "detailed" and step <= 2
+		var due: bool = s.tick >= int(npc.get("walk_next", 0)) if own_pace else s.tick % cadence == 0
+		if due:
+			var was: Array = s.entities[str(npc.id)].cell
+			_act(sim, npc, cadence, step)
+			if own_pace:
+				var now: Array = s.entities[str(npc.id)].cell
+				npc.walk_next = s.tick + (Pace.delay(s, now, 2, npc, "stride_carry") if now != was else 2)
+
+## One move or action of a villager's routine (on their step).
+static func _act(sim: RefCounted, npc: Dictionary, cadence: int, step: int) -> void:
+	var s: Dictionary = sim.state
+	if npc.job != 0:
+		Jobs.advance_many(sim, npc.id, cadence / 2)
+	elif not npc.goal.is_empty():
+		var actions: int = cadence / 2 if step <= 2 else 1
+		var distance: int = mini(actions, npc.path.size())
+		if distance > 0 and npc.nav_revision != s.world.nav_revision and Nav.still_clear(s, npc.path):
+			npc.nav_revision = s.world.nav_revision   # the world changed elsewhere; this route is still open
+		if distance > 0 and npc.nav_revision == s.world.nav_revision:
+			s.entities[str(npc.id)].cell = npc.path[distance - 1]
+			npc.path = npc.path.slice(distance)
+			actions -= distance
+		if actions > 0:
+			if npc.goal == "rest" and npc.path.is_empty():
+				npc.fatigue = maxi(10, npc.fatigue - actions + 1)
+			_need_action(sim, npc)
 
 ## Things a villager keeps on them rather than putting in the store.
 const KIT := ["bandage"]
@@ -175,7 +189,7 @@ static func set_goal(s: Dictionary, npc: Dictionary, goal: String) -> void:
 		if plot.is_empty(): return
 		npc.garden_plot = plot.id
 		destination_cell = Households.garden_stance(plot)
-	var route := Nav.request_path(s, s.entities[str(npc.id)].cell, destination_cell if not destination_cell.is_empty() else World.Fixtures.interaction_cell(s, target))
+	var route := Nav.request_walk_path(s, s.entities[str(npc.id)].cell, destination_cell if not destination_cell.is_empty() else World.Fixtures.interaction_cell(s, target))
 	if not route.ok:
 		npc.status = goal + ": " + route.error_code
 		npc.retry_at = s.tick + 100
