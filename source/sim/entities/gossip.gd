@@ -11,7 +11,8 @@ const DAY := 14400
 const SHARE_CHANCE := 50     # percent, when two people chat
 const GROW_CHANCE := 15      # percent that the story gets bigger in the telling
 const CARRY := 3             # how many pieces of news a trader takes along
-const NEWS_KINDS := ["theft", "murder", "shooting", "assault", "assault_sheriff", "kick", "discharge", "death", "birth", "migration"]
+const NEWS_KINDS := ["theft", "murder", "shooting", "assault", "assault_sheriff", "kick", "discharge", "death", "birth", "migration",
+	"body_found", "outlaw_jailed", "outlaw_killed", "robbed_by_bandits", "bandits_cleared", "bandit_camp"]
 
 static func knows(npc: Dictionary, event_id: int) -> bool:
 	for rumour in npc.get("rumours", []):

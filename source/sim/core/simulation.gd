@@ -303,9 +303,20 @@ func _drain(queue_name: String, is_command: bool) -> void:
 		else:
 			apply_event(entry)
 
+## Tied up you can still talk: to the bandit on watch, when he's close.
+func _captive_talk(entry: Dictionary) -> bool:
+	var target: int = int(entry.get("payload", {}).get("target", 0))
+	var npc: Dictionary = state.get("residents", {}).get(str(target), {})
+	if npc.is_empty() or int(npc.get("bandit", 0)) == 0: return false
+	if entry.kind == "context_action" and not str(entry.payload.get("action", "")).begins_with("c_"): return false
+	if not entry.kind in ["interact", "context_action"]: return false
+	var me: Array = state.entities[str(state.player)].cell
+	var at: Array = state.entities[str(target)].cell
+	return maxi(absi(me[0] - at[0]), absi(me[1] - at[1])) <= 4
+
 func apply_command(entry: Dictionary) -> void:
 	# Someone lying on the ground cannot act until they are back on their feet.
-	if state.has("brawl") and entry.kind in PLAYER_ACTS and entry.kind != "surrender" and Bandits.captive(state):
+	if state.has("brawl") and entry.kind in PLAYER_ACTS and entry.kind != "surrender" and Bandits.captive(state) and not _captive_talk(entry):
 		state.player_control.notice = "You're tied up. F: work at the ropes when the watch is away."
 		return
 	if state.has("brawl") and entry.kind in PLAYER_ACTS and (Brawl.player_down(state) or Law.restrained(state)):

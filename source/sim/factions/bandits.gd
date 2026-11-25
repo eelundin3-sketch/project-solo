@@ -77,6 +77,7 @@ static func ensure_camp(sim: RefCounted) -> void:
 	_place_props(s)
 	_dress(s)
 	sim.record("Somewhere out in the wilds, a band of outlaws has made camp.")
+	load("res://sim/world/chronicle.gd").record(s, "bandit_camp", 0, int(members[0]), 0, spot)
 
 ## Outlaw clothes: duster, black hat and a bandana; the leader in a long coat. Once (older saves too).
 static func _dress(s: Dictionary) -> void:
