@@ -204,9 +204,26 @@ func _start_from_menu() -> void:
 	intro_tween.tween_property($ObserverCamera, "zoom", Vector2.ONE * 2.0, 1.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	intro_tween.tween_callback(_finish_intro)
 
+## Waiting out a jail sentence: the fast-forward stops with two in-game minutes left (looking one
+## frame ahead so it never overshoots), so the release plays out at the speed you had.
+const JAIL_WAIT_STOP := 20   # ticks: two in-game minutes
+func _stop_jail_wait(delta: float) -> void:
+	if not skipping: return
+	var jail: Dictionary = simulation.state.get("player_control", {}).get("jail", {})
+	if jail.is_empty() or bool(jail.get("releasing", false)): return
+	var left: int = int(jail.until) - int(simulation.state.tick)
+	var next_frame: int = ceili(minf(delta, 0.1) * 10.0 * float(clock.speed)) + 1
+	if left <= JAIL_WAIT_STOP + next_frame:
+		skipping = false
+		clock.speed = skip_previous_speed
+		clock.accumulator = 0
+		simulation.state.player_control.notice = "Two minutes left."
+
 ## Knocked out: run time at top speed until the player comes round, then back to the usual speed.
 func _skip_ahead(fast: int = 40) -> void:
 	if skipping: return
+	var jail: Dictionary = simulation.state.get("player_control", {}).get("jail", {})
+	if not jail.is_empty() and int(jail.until) - int(simulation.state.tick) <= JAIL_WAIT_STOP + 2: return   # nearly done: no point
 	skipping = true
 	skip_previous_speed = clock.speed
 	clock.paused = false
@@ -246,6 +263,7 @@ func _process(delta: float) -> void:
 	var route_active: bool = not simulation.state.get("player_path", []).is_empty()
 	if route_active and Input.is_key_pressed(KEY_SHIFT) != bool(simulation.state.player_control.get("travel_run", false)):
 		simulation.submit("travel_run", {"run": Input.is_key_pressed(KEY_SHIFT)})
+	_stop_jail_wait(delta)
 	var started := Time.get_ticks_usec()
 	var advanced: int = clock.advance(delta, simulation)
 	Probe.add("f:simulation", Time.get_ticks_usec() - started)
