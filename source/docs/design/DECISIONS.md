@@ -615,3 +615,38 @@ mostly more to draw: 28 people instead of 18 (the extra sheriffs, the governor, 
 bandits), street lamps and the new buildings. Normal play (zoom 2) is at 74-75 FPS (budget 60),
 rain at 68 (budget 50), the map unchanged, the worst simulation tick 14 ms (budget 15). The owner
 accepted the far-zoom figure on 2026-11-25. Records: docs/validation/view_benchmark_*_m5_*.json.
+
+## 2026-11-25: Fights that end, reinforcements, a living camp, roofs [owner]
+
+**Sheriffs end fights.** Until the fight turns lethal (you killed someone or keep firing), sheriffs
+aim for your legs, or your gun arm if you shoot back (`Wounds.pick(sim, aim)`, 75% aimed). They
+close in cover to cover, or straight in while you're quiet if there is no cover; when you're in
+cover one of them flanks (`alert.flanker`). Holding your gun without firing for 200 ticks
+(20 s) turns into an arrest; crawling does too. Wounded sheriffs bandage instead of freezing. A
+sheriff shouts at most once every 100 ticks, and only on a change.
+
+**Reinforcements.** A killing by the player with a witness is filed as murder (it was only
+remembered) and sends a civilian runner to the nearest other town (`sim/law/reinforcements.gd`).
+That town sends two sheriffs, always keeping one at home (`Sheriff.strength` counts those away).
+They travel as a trip (one path, cheap position lookup). On arrival they join the fight; if you're
+already caught they visit the office, talk, and go home.
+
+**Arrest from the ground.** A downed suspect is held down while cuffed (`arrest.pinned`), then
+hauled up in a new `lift` phase (40 ticks) before the escort; no more popping up standing.
+
+**Bandit camp.** Three big open tents (one per bandit, slept in), a pot, seats, a woodpile and a
+lookout. By day each bandit takes turns to sit, cook, fetch wood and keep watch; crates, rocks and
+the woodpile are solid cover. The fire is drawn every frame (not baked into the background).
+
+**Roofs.** Every finished building has a roof over its exact shape (`view/world/roofs.gd`), y-sorted
+at its front edge. The roof over the building the player is in is lifted; people inside any other
+roofed building are not drawn. Zoomed far out every roof stays on, building floor images are
+hidden, the "YOU" label and player dot are removed, and name tags are hidden. Town names draw on
+their own layer above the roofs. View only: nothing in `sim/` changed for roofs.
+
+Benchmarks (2026-11-25, same machine, before = commit 5e6bb3b, 1280x720), FPS before -> after:
+noon zoom 2 76.5 -> 72.6 (-5%), zoom 1 50.5 -> 53.5, zoom 0.5 35.6 -> 39.0, far zoom 0.2
+45.0 -> 48.6, map 699 -> 683; night zoom 2 67.3 -> 69.6, far 44.6 -> 48.0. Roofs make the far and
+middle zooms faster (no floors, no people indoors). The machine ran slower overall than in the
+earlier records. Worst simulation tick after warm-up 14.3 ms (budget 15). All 91 tests pass.
+Records: docs/validation/view_benchmark_{before,after}_fights_{12,23}.json.

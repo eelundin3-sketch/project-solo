@@ -6,8 +6,8 @@ Verified 2026-11-20 on branch `feature/quick-wins` (commit `74320c3` plus the ha
 
 | Item | Value |
 |---|---|
-| Tests | 77 in `scripts/test.sh`, all passed (last full run 2026-11-19 evening, 12 min 48 s) |
-| Frame rate (M4, 1280x720) | about 79 FPS zoom 2, 57 zoom 1, 46 zoom 0.5, about 1,000 on the map; headless worst tick about 12 ms. Records: `docs/validation/view_benchmark_*.json` |
+| Tests | 91 in `scripts/test.sh`, all passed (last full run 2026-11-25) |
+| Frame rate (2026-11-25, 1280x720) | about 73 FPS zoom 2 at noon, 70 at night, 54 zoom 1, 39 zoom 0.5, 49 far (0.2), about 680 on the map; worst simulation tick 14.3 ms. Records: `docs/validation/view_benchmark_*_fights_*.json` |
 | Code size (GDScript, excluding Finder copies) | `sim/` about 11,800 lines, `view/` 9,400, `app/` 900, `tests/` 7,700 |
 | GitHub | **PR #14** (`feature/quick-wins` into `chore/app-first-layout`) opened 2026-11-20 at the owner's request; PR #13 (`chore/app-first-layout`) is open and its checks passed; neither is merged |
 
@@ -68,6 +68,11 @@ Big-push order when the owner asks: **PR #13 first**, then the feature branches 
 | **Jail release**: fetched from the cell, things returned, walked to the door, shoved out | `sim/law/law.gd` | `law_test` |
 | **Bandit camp**: demand, robbery, captivity and escape, fights, cleared camp and reward | `sim/factions/bandits.gd` | `bandits_test`, `bandit_capture` |
 | **Dustvale the capital**: 3 sheriffs per town (5 there), governor's town house, saloon and barkeep, drinks | `sim/settlement/capital.gd` | `dustvale_capital_test`, `capital_capture` |
+| **Sheriffs who end the fight**: close in cover to cover, a flanker when you're in cover, aimed shots at legs or gun arm until it turns lethal, a holdout who keeps his gun out is moved in on after 20 s, shouts only on a change | `sim/combat/gunfire.gd`, `wounds.gd` | `gunfire_tactics_test` |
+| **Reinforcements**: a witnessed killing sends a runner to the nearest town; two sheriffs come, join the fight, or visit the office and talk, then go home | `sim/law/reinforcements.gd` | `reinforcements_test` |
+| **Poses**: sitting (desk, saloon, campfire), tied with ropes, backpedal and strafe legs, an arrest from the ground (held down, then hauled up) | `animation_director.gd`, `drawn_character.gd`, `law.gd` | `poses_test`, `law_test`, `poses_capture` |
+| **A living bandit camp**: big tents they sleep in, sit/cook/fetch wood/keep watch, cover in a fight, an animated fire | `sim/factions/bandits.gd`, `frontier_map_art.gd` | `bandit_camp_test`, `bandit_capture` |
+| **Roofs** on every building except the one you're in; people indoors hidden; zoomed out: roofs only, no "YOU" marker or name tags | `view/world/roofs.gd`, `world_view.gd` | `roofs_test`, `roofs_capture` |
 
 ## 3. Partly implemented (exact gaps)
 
@@ -94,7 +99,7 @@ Everything in `docs/ROADMAP.md` milestones 5-14 (night lighting, per-town weathe
 ## 5. Known problems and technical debt
 
 1. **Hidden crimes never resolve** (section 3).
-2. **Render error at launch:** `ERROR: Invalid polygon data, triangulation failed` from `view/world/prop_art.gd:7` via `log_piece` (a log lying on the ground, drawn by `fixture_director.gd` `draw_transfers`). Seen when the game was launched on 2026-11-20 and repeats; not investigated; **unknown whether it predates this work**. The game keeps running.
+2. **Render error at launch (fixed 2026-11-25):** `Invalid polygon data, triangulation failed` came from shapes that cannot be filled (fallen logs, blood stains); `prop_art.gd` `fillable` now checks first and those are outlined or drawn as ovals.
 3. **678 untracked Finder duplicate files** ("name 2.gd", "Project Solo 2.app", ...) litter the working folder. They are not in git and `check_layout.py` fails on any that get tracked. **Never run `git add -A` or `git add .`; add files by name.** A `.gitignore` rule for them has not been added.
 4. **Godot exists only at `/private/tmp/living-world-engine/Godot.app`** (4.6 stable). A reboot or temp cleanup can remove it; `/Applications/Godot.app` is not installed. The launcher `Project Solo.app` looks in `/Applications` first. Moving it is an open task.
 5. **Stale documents** (written before steps 1-4; they still say what they said): `README.md` (start kit now rifle; edited lightly 2026-11-20), `docs/status/CURRENT_GAME.md` and `IMPLEMENTATION_STATUS.md` (10 residents, two towns, shotgun, 384 x 256 region; banners added 2026-11-20), `docs/status/CHANGELOG.md` (stops at 2026-11-18; PRs #10-#13 and today's work are in git history and `docs/DECISIONS.md`).
@@ -117,5 +122,5 @@ Everything in `docs/ROADMAP.md` milestones 5-14 (night lighting, per-town weathe
 
 1. Let the owner hand-play steps 1-4 and the rifle; collect feedback before building more (nothing from this stretch has been seen by a person).
 2. Fix section 3's first row (hidden crimes) if the owner agrees: it is small and makes witnesses and body-hiding complete.
-3. Look at the render error (section 5.2) once to learn whether it predates this branch.
+3. (Done 2026-11-25: the render error in section 5.2 is fixed.)
 4. Then milestone 5 from `docs/ROADMAP.md`: night lighting, per-town weather, mud and fog, seasons and harvest, seasonal colours, price trends. Show the plan first.
