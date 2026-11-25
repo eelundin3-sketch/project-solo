@@ -606,3 +606,12 @@ moves house. Townsfolk drop in 18:00-21:00 (30% once a day), and the player
 can buy a drink (3 coins to the barkeep: thirst and mood). Dustvale's office
 keeps its two sheriff beds: five sheriffs share them in shifts (there is no
 room for a third bed beside the rack).
+
+## 2026-11-25: Far-zoom frame rate accepted [owner]
+
+After milestone 5 and the follow-up work, the overview zoom (0.2) runs at about 52 FPS against 58
+before (-10.5%), just past the rule that a drop of 10% or more is fixed or accepted. The cause is
+mostly more to draw: 28 people instead of 18 (the extra sheriffs, the governor, the barkeep, the
+bandits), street lamps and the new buildings. Normal play (zoom 2) is at 74-75 FPS (budget 60),
+rain at 68 (budget 50), the map unchanged, the worst simulation tick 14 ms (budget 15). The owner
+accepted the far-zoom figure on 2026-11-25. Records: docs/validation/view_benchmark_*_m5_*.json.
