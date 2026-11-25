@@ -66,6 +66,9 @@ class Roof extends Node2D:
 			# Its front walls, standing on the ground.
 			for face in row.faces:
 				_wall(face)
+		if not far:
+			var main: Rect2 = _main_face()
+			if main.size != Vector2.ZERO: _decor(main)
 		if chimney:
 			var at := chimney_at + lift
 			draw_rect(Rect2(at, Vector2(14, 22)), Color("6b4a36"))
@@ -75,6 +78,133 @@ class Roof extends Node2D:
 					var age: float = fmod(smoke_time * 0.35 + float(i) * 0.2, 1.0)
 					var puff := at + Vector2(7 + sin(age * 6.0 + float(i)) * 4.0 + age * 10.0, -4 - age * 46.0)
 					draw_circle(puff, 4.0 + age * 9.0, Color(0.78, 0.76, 0.72, 0.5 * (1.0 - age)))
+
+	## The front with the door on it (or the widest), where the building shows what it's for.
+	func _main_face() -> Rect2:
+		var best := Rect2()
+		for row in rows:
+			for face in row.faces:
+				var f: Rect2 = face
+				if door_x >= f.position.x and door_x <= f.end.x and absf(f.end.y - door_ground) < 1.0: return f
+				if f.size.x > best.size.x: best = f
+		return best
+
+	## A painted sign board centred at `at`.
+	func _sign(at: Vector2, text: String, width: float, board: Color, ink: Color) -> void:
+		var font: Font = ThemeDB.fallback_font
+		var r := Rect2(at - Vector2(width / 2.0, 8), Vector2(width, 16))
+		draw_rect(r.grow(1.5), board.darkened(0.45))
+		draw_rect(r, board)
+		draw_string(font, Vector2(r.position.x, r.position.y + 12), text, HORIZONTAL_ALIGNMENT_CENTER, width, 10, ink)
+
+	## What the building is for, on its front: signs, doors and the things outside.
+	func _decor(face: Rect2) -> void:
+		var top: float = face.end.y - height
+		var ground: float = face.end.y
+		var cx: float = door_x if door_x != INF and door_x >= face.position.x and door_x <= face.end.x else face.get_center().x
+		var paint := Color("e8d9b5")
+		var ink := Color("3a2414")
+		match kind:
+			"office":
+				_sign(Vector2(cx, top + 14), "SHERIFF", 70, Color("2f2a24"), Color("e9c45a"))
+				var star := Vector2(cx - 44, top + 14)
+				var points := PackedVector2Array()
+				for i in range(10):
+					points.append(star + Vector2.from_angle(-PI / 2.0 + float(i) * PI / 5.0) * (5.0 if i % 2 == 0 else 2.2))
+				draw_colored_polygon(points, Color("e9c45a"))
+				# A barred window: the cells.
+				var bx: float = face.position.x + 18.0
+				draw_rect(Rect2(Vector2(bx, ground - height * 0.62), Vector2(16, 16)), Color("1d1d1f"))
+				for i in range(4): draw_line(Vector2(bx + 2 + i * 4, ground - height * 0.62), Vector2(bx + 2 + i * 4, ground - height * 0.62 + 16), Color("8d8f92"), 1.2)
+				draw_rect(Rect2(Vector2(cx - 14, ground - 3), Vector2(28, 3)), Color("6a4b33"))   # the step
+			"warehouse":
+				_sign(Vector2(cx, top + 14), "GENERAL STORE", 104, paint, ink)
+				# Big double loading doors and crates outside.
+				draw_rect(Rect2(Vector2(cx - 18, ground - 44), Vector2(36, 44)), Color("5c3d24"))
+				draw_line(Vector2(cx, ground - 44), Vector2(cx, ground), Color("3f2918"), 1.4)
+				for d in [[-1, -18], [1, 18]]:
+					draw_line(Vector2(cx + d[1] * 0.0 + (-18 if d[0] < 0 else 0), ground - 44), Vector2(cx + (0 if d[0] < 0 else 18), ground), Color("7a5537"), 1.0)
+				for k in range(2):
+					var crate := Rect2(Vector2(cx + 26 + k * 13, ground - 12), Vector2(12, 12))
+					draw_rect(crate, Color("a77c4e")); draw_rect(crate, Color("6e4f31"), false, 1.0)
+					draw_line(crate.position, crate.end, Color("6e4f31"), 1.0)
+			"market":
+				_sign(Vector2(cx, top + 12), "MARKET", 64, paint, ink)
+				# A striped awning along the front.
+				var y0: float = ground - height * 0.48
+				var x: float = face.position.x + 4.0
+				var stripe := 0
+				while x < face.end.x - 4.0:
+					var w: float = minf(10.0, face.end.x - 4.0 - x)
+					draw_colored_polygon(PackedVector2Array([Vector2(x, y0), Vector2(x + w, y0), Vector2(x + w, y0 + 9), Vector2(x, y0 + 9)]), Color("b8463a") if stripe % 2 == 0 else Color("efe3c6"))
+					x += 10.0; stripe += 1
+				for k in range(3):
+					var basket := Vector2(face.position.x + 20 + k * 22, ground - 6)
+					draw_circle(basket, 6, Color("9c7a46"))
+					draw_circle(basket + Vector2(0, -3), 4, [Color("d1492f"), Color("e3b23c"), Color("7fa043")][k])
+			"saloon":
+				_sign(Vector2(face.get_center().x, top - 6), "SALOON", 90, Color("6b2c1e"), Color("f3d27a"))
+				# A balcony between the storeys, and swinging doors.
+				var by: float = ground - height * 0.5
+				draw_rect(Rect2(Vector2(face.position.x + 2, by), Vector2(face.size.x - 4, 4)), Color("4f3322"))
+				var post_x: float = face.position.x + 8.0
+				while post_x < face.end.x - 4.0:
+					draw_line(Vector2(post_x, by), Vector2(post_x, by - 9), Color("4f3322"), 1.5)
+					post_x += 9.0
+				draw_line(Vector2(face.position.x + 2, by - 9), Vector2(face.end.x - 2, by - 9), Color("4f3322"), 1.5)
+				draw_rect(Rect2(Vector2(cx - 10, ground - 30), Vector2(20, 30)), Color("1f140c"))
+				for side in [-1.0, 1.0]:
+					draw_rect(Rect2(Vector2(cx + (side - 1.0) * 5.0, ground - 25), Vector2(10, 14)), Color("8b5a35"))
+			"town_hall":
+				_sign(Vector2(face.get_center().x, top - 6), "TOWN HALL", 96, Color("efe6cf"), Color("2c3c52"))
+				# Columns, steps and a flag on the roof.
+				for col_x in [face.position.x + 10.0, cx - 20.0, cx + 20.0, face.end.x - 10.0]:
+					draw_rect(Rect2(Vector2(col_x - 3, ground - height * 0.85), Vector2(6, height * 0.85)), Color("f1ead9"))
+					draw_rect(Rect2(Vector2(col_x - 4, ground - height * 0.85 - 3), Vector2(8, 3)), Color("cfc4a9"))
+				draw_rect(Rect2(Vector2(cx - 24, ground - 3), Vector2(48, 3)), Color("c6bca3"))
+				var pole := Vector2(face.get_center().x, top - 40)
+				draw_line(pole, pole + Vector2(0, 26), Color("6b6b6b"), 1.5)
+				draw_colored_polygon(PackedVector2Array([pole + Vector2(1, 0), pole + Vector2(17, 4.5), pole + Vector2(1, 9)]), Color("a3342c"))   # the town's pennant
+				draw_line(pole + Vector2(1, 4.5), pole + Vector2(12, 4.5), Color("e0b84a"), 1.2)
+			"bakery":
+				_sign(Vector2(cx, top + 14), "BAKERY", 62, paint, ink)
+				var loaf := Vector2(cx - 40, top + 14)
+				draw_circle(loaf, 5.5, Color("c88a3f")); draw_circle(loaf + Vector2(4, 0), 4.5, Color("c88a3f"))
+				# A shop window with loaves on the sill.
+				var wx: float = cx + 18.0
+				draw_rect(Rect2(Vector2(wx, ground - 30), Vector2(28, 16)), Color("f2d79a"))
+				for k in range(3): draw_circle(Vector2(wx + 6 + k * 8, ground - 18), 3.0, Color("b77432"))
+			"forge":
+				_sign(Vector2(cx, top + 14), "BLACKSMITH", 84, Color("2a2622"), Color("e0a050"))
+				# Wide open doors with the glow of the fire inside; soot over them; an anvil outside.
+				draw_rect(Rect2(Vector2(cx - 16, ground - 40), Vector2(32, 40)), Color("2b1a10"))
+				draw_rect(Rect2(Vector2(cx - 12, ground - 18), Vector2(24, 18)), Color(0.95, 0.5, 0.15, 0.55))
+				draw_rect(Rect2(Vector2(cx - 22, ground - 50), Vector2(44, 10)), Color(0.1, 0.08, 0.06, 0.35))
+				var anvil := Vector2(cx + 30, ground - 6)
+				draw_rect(Rect2(anvil + Vector2(-6, -4), Vector2(12, 4)), Color("3c3c40"))
+				draw_rect(Rect2(anvil + Vector2(-2, 0), Vector2(4, 6)), Color("2e2e31"))
+			"sawmill":
+				_sign(Vector2(cx, top + 14), "SAWMILL", 66, paint, ink)
+				var blade := Vector2(cx - 44, top + 14)
+				draw_circle(blade, 6, Color("b9bdc2")); draw_circle(blade, 2, Color("6d7176"))
+				# Barn doors, and logs and planks stacked outside.
+				draw_rect(Rect2(Vector2(cx - 20, ground - 44), Vector2(40, 44)), Color("6a4528"))
+				draw_line(Vector2(cx - 20, ground - 44), Vector2(cx + 20, ground), Color("8a6240"), 1.4)
+				draw_line(Vector2(cx + 20, ground - 44), Vector2(cx - 20, ground), Color("8a6240"), 1.4)
+				for k in range(3):
+					draw_circle(Vector2(face.end.x - 12 - k * 9, ground - 5), 4.5, Color("8a5f3a"))
+					draw_circle(Vector2(face.end.x - 12 - k * 9, ground - 5), 2.0, Color("c79a64"))
+				draw_rect(Rect2(Vector2(face.position.x + 6, ground - 8), Vector2(26, 8)), Color("d2ab72"))
+			_:
+				# A home: a porch roof over the door, shutters and a flower box.
+				var porch := Rect2(Vector2(cx - 22, ground - 46), Vector2(44, 6))
+				draw_rect(porch, base.darkened(0.1))
+				draw_line(porch.position + Vector2(2, 6), Vector2(porch.position.x + 2, ground), Color("6a4b33"), 2.0)
+				draw_line(Vector2(porch.end.x - 2, porch.end.y), Vector2(porch.end.x - 2, ground), Color("6a4b33"), 2.0)
+				draw_rect(Rect2(Vector2(cx - 22, ground - 3), Vector2(44, 3)), Color("8a6a48"))
+				var box_x: float = face.position.x + 14.0
+				draw_rect(Rect2(Vector2(box_x - 1, ground - height * 0.62 + 15), Vector2(18, 4)), Color("6a4b33"))
+				for k in range(3): draw_circle(Vector2(box_x + 3 + k * 5, ground - height * 0.62 + 14), 2.0, [Color("d0485a"), Color("f0c040"), Color("e07ab0")][(k + int(face.position.x)) % 3])
 
 	## A stretch of front wall: from the ground line up to the eaves.
 	func _wall(face: Rect2) -> void:
