@@ -358,7 +358,7 @@ static func _start_duel(sim: RefCounted, bandit: Dictionary) -> void:
 		sheriff.collar.phase = "duel"
 		sheriff.collar.since = s.tick
 	var at: Array = s.entities[str(bandit.id)].cell
-	load("res://sim/entities/fear.gd").on_gunshot(sim, int(bandit.errand.town), at)
+	load("res://sim/entities/fear.gd").on_gunshot(sim, int(bandit.errand.town), at, false)
 
 ## A sheriff in the shootout: into cover against the outlaw, then a shot every so often.
 static func _sheriff_fights(sim: RefCounted, sheriff: Dictionary, bandit: Dictionary, me: Array, him: Array, gap: float) -> void:

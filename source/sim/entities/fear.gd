@@ -15,7 +15,7 @@ static func _speech() -> GDScript:
 	return load("res://sim/entities/speech.gd")
 
 ## A gun went off at `origin` in `town`. Everyone in that town who can see it takes cover.
-static func on_gunshot(sim: RefCounted, town: int, origin: Array) -> void:
+static func on_gunshot(sim: RefCounted, town: int, origin: Array, by_player: bool = true) -> void:
 	var s: Dictionary = sim.state
 	var keys: Array = s.get("residents", {}).keys()
 	keys.sort()
@@ -31,6 +31,9 @@ static func on_gunshot(sim: RefCounted, town: int, origin: Array) -> void:
 		if Vector2(cell[0] - origin[0], cell[1] - origin[1]).length() > see: continue
 		if not Cover.line_clear(s, origin, cell): continue   # behind a wall: they did not see it
 		_scare(sim, npc, origin)
+		if by_player and not npc.get("fear", {}).is_empty():
+			npc.fear.saw_player = true
+			npc.fear.outfit = load("res://sim/law/witness_reports.gd").description(s)
 
 static func _scare(sim: RefCounted, npc: Dictionary, origin: Array) -> void:
 	var s: Dictionary = sim.state
@@ -48,6 +51,22 @@ static func _scare(sim: RefCounted, npc: Dictionary, origin: Array) -> void:
 	npc.fear = {"until": s.tick + QUIET_TICKS, "from": origin.duplicate(), "cover": spot, "arrived": false, "path_tick": -100}
 	npc.status = "Running for cover"
 	if sim.random_int("fear", 0, 99) < 35: _speech().say(sim, npc.id, "scared")
+
+## Once it has gone quiet, one witness who saw the stranger shooting breaks for the sheriff, unless
+## the town already has him on the books (a sheriff saw it) or someone is already on the way.
+static func _go_tell(sim: RefCounted, npc: Dictionary, outfit: Dictionary) -> void:
+	var s: Dictionary = sim.state
+	var town: int = int(npc.settlement)
+	var Law = load("res://sim/law/law.gd")
+	if town == 0 or Law.wanted_hours(s, town) > 0 or not npc.get("reporting", {}).is_empty() or npc.occupation in ["Child", "Bandit"]: return
+	var law: Dictionary = Law._law(s)
+	var told: Dictionary = law.get("shot_told", {})
+	if s.tick - int(told.get(str(town), -100000)) < QUIET_TICKS * 3: return
+	told[str(town)] = s.tick
+	law.shot_told = told
+	npc.reporting = {"town": town, "kind": "discharge", "victim": 0, "outfit": outfit.duplicate(), "since": s.tick, "path_tick": -1000, "next_step": s.tick}
+	npc.status = "Running to tell the sheriff"
+	_speech().say(sim, npc.id, "scared")
 
 ## A cell the shooter at `origin` cannot see, next to a tree or a wall, near `from`; the nearest
 ## wins. If there is none, a point straight away from the shooter.
@@ -83,9 +102,12 @@ static func update(sim: RefCounted) -> void:
 			npc.erase("fear")
 			continue
 		if s.tick >= int(fear.until):
+			var saw: bool = bool(fear.get("saw_player", false))
+			var outfit: Dictionary = fear.get("outfit", {})
 			npc.erase("fear")
 			npc.status = "Calming down"
 			npc.work_pause_until = s.tick + 60
+			if saw: _go_tell(sim, npc, outfit)
 			continue
 		var load_brawl = load("res://sim/combat/brawl.gd")
 		if load_brawl.knocked(s, npc): continue

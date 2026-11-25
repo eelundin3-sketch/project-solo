@@ -100,6 +100,11 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 			"escort":
 				result.action = "escort"
 				return result
+	# Standing up to you after a blow (brawl.gd temperament): squared up, facing you.
+	if not npc.is_empty() and npc.get("reporting", {}).has("hold_until"):
+		result.action = "combat_idle"
+		result.target = s.get("player", 0)
+		return result
 	# A bandit who has given up: hands in the air (bandits.gd morale).
 	if not npc.is_empty() and bool(npc.get("surrendered", false)):
 		result.action = "surrender"
