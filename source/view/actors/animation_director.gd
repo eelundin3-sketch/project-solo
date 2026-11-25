@@ -73,13 +73,29 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		result.action = "stagger" if npc.get("impact_kind", "") == "shove" else "hit"
 		result.phase = 1.0 - float(npc.impact_until - s.tick) / 12.0
 		return result
-	# The sheriff making an arrest (law.gd): gun drawn, walking up, cuffing, escorting.
+	# Anyone else with a gun out (a bandit holding you up or fighting, bandits.gd): the cover cycle
+	# if they have one, otherwise the gun up and pointed at whoever they're covering, walking or not.
+	if not npc.is_empty() and bool(npc.get("gun_out", false)) and npc.get("arrest", {}).is_empty():
+		result.target = int(npc.get("aim_at", s.get("player", 0)))
+		var gun_cycle: Dictionary = npc.get("cover_cycle", {})
+		if gun_cycle.is_empty():
+			result.action = "aim"
+		else:
+			match str(gun_cycle.get("phase", "hide")):
+				"peek": result.action = "aim"
+				"fire":
+					result.action = "shoot"
+					result.phase = clampf(float(s.tick - int(gun_cycle.get("since", s.tick))) / 8.0, 0.0, 1.0)
+				"advance": result.action = "gun_carry"
+				_: result.action = "reload" if int(gun_cycle.get("ammo", 1)) <= 0 else "gun_carry"
+		return result
+	# The sheriff making an arrest (law.gd): gun drawn, walking up (pointed at you), cuffing, escorting.
 	var arrest: Dictionary = npc.get("arrest", {}) if not npc.is_empty() else {}
 	if not arrest.is_empty():
 		result.target = s.get("player", 0)
 		match str(arrest.phase):
 			"standoff": result.action = "aim"
-			"approach": result.action = "gun_carry"
+			"approach": result.action = "aim"   # walking up with the gun on you
 			"cuff":
 				# Over a prisoner on the ground he kneels and holds them down; standing, he cuffs.
 				result.action = "pin" if bool(arrest.get("pinned", false)) else "cuff"
@@ -97,9 +113,12 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 					"fire":
 						result.action = "shoot"
 						result.phase = clampf(float(s.tick - int(cycle.get("since", s.tick))) / 8.0, 0.0, 1.0)
-					_: result.action = "reload" if int(cycle.get("ammo", 1)) <= 0 else "gun_carry"
+					_:
+						# Holding a gunman who has stopped: the gun stays on him, even while moving in.
+						var holding: bool = str(s.get("law", {}).get("alert", {}).get(str(npc.get("settlement", 0)), {}).get("phase", "")) == "hold"
+						result.action = "reload" if int(cycle.get("ammo", 1)) <= 0 else ("aim" if holding else "gun_carry")
 			"backup": result.action = "aim"
-			"assist": result.action = "gun_carry"
+			"assist": result.action = "aim" if not bool(s.get("player_control", {}).get("restrained", false)) else "gun_carry"
 			"pursue": result.action = "combat_idle"
 			_: result.action = "idle"
 		return result
@@ -461,6 +480,7 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		# An unreadied shotgun, and every sheriff's, hangs from a sling across the back.
 		var carried_items: Dictionary = s.inventories.get(key, {}).get("items", {})
 		pose.slung = ((int(carried_items.get("shotgun", 0)) + int(carried_items.get("rifle", 0))) > 0 and not (entity.kind == "player" and s.get("shotgun", {}).get("equipped", false))) or s.get("residents", {}).get(key, {}).get("occupation", "") == "Sheriff"
+		if bool(s.get("residents", {}).get(key, {}).get("gun_out", false)): pose.slung = false   # the rifle is in his hands
 		var status: String = s.get("residents", {}).get(key, {}).get("status", "")
 		if status != pose.get("last_status", "") and status == "Ate from communal stores" and not first:
 			pose.eat_until = time + 0.8
@@ -497,7 +517,7 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 			action = pose.handling
 			state_action.phase = pose.handling_age / 0.5
 		# An armed upper-body pose can play over the walking or running legs.
-		var lawman_armed: bool = str(s.get("residents", {}).get(key, {}).get("arrest", {}).get("phase", "")) in ["standoff", "approach", "engage", "backup", "assist"]
+		var lawman_armed: bool = str(s.get("residents", {}).get(key, {}).get("arrest", {}).get("phase", "")) in ["standoff", "approach", "engage", "backup", "assist"] or bool(s.get("residents", {}).get(key, {}).get("gun_out", false))
 		var gun_pose := (gun_equipped or lawman_armed) and action in ["gun_carry", "aim", "reload", "shoot"]
 		if pose.moving and not gun_pose and action not in ["punch", "shove", "kick", "hit", "stagger", "down", "fall", "getup", "rest", "cuffed", "escort", "surrender", "cuff", "pin", "lift", "search", "crawl", "sit", "cook", "tied"]:
 			action = "run" if sprinting else ("carry" if quantity > 0 else "walk")

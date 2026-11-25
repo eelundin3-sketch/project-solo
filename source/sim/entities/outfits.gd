@@ -7,15 +7,15 @@ const Inventory = preload("res://sim/inventory/inventory_store.gd")
 const SLOTS: Array[String] = ["hat", "vest", "shirt", "pants", "boots", "pack"]
 const SLOT_NAMES := {"hat": "Hat", "vest": "Vest", "shirt": "Shirt", "pants": "Trousers", "boots": "Boots", "pack": "Backpack"}
 const NAMES := {
-	"hat": ["Sun hat", "Brown hat", "Dark hat", "Sheriff's hat"],
-	"vest": ["Olive vest", "Drab vest", "Rust vest", "Moss vest", "Sheriff's vest"],
+	"hat": ["Sun hat", "Brown hat", "Dark hat", "Sheriff's hat", "Black hat"],
+	"vest": ["Olive vest", "Drab vest", "Rust vest", "Moss vest", "Sheriff's vest", "Duster", "Long coat"],
 	"shirt": ["Cream shirt", "Tan shirt", "Sage shirt", "Sand shirt", "Prison shirt"],
 	"pants": ["Tan trousers", "Grey trousers", "Dark trousers", "Prison trousers"],
 	"boots": ["Brown boots", "Black boots", "Prison boots"],
 	"pack": ["Canvas backpack"]}
 const COLORS := {
-	"hat": [Color("d3a35a"), Color("bf9558"), Color("4f453a"), Color("3a2c22")],
-	"vest": [Color("968057"), Color("887b57"), Color("a07551"), Color("8c9371"), Color("5a3b27")],
+	"hat": [Color("d3a35a"), Color("bf9558"), Color("4f453a"), Color("3a2c22"), Color("221c18")],
+	"vest": [Color("968057"), Color("887b57"), Color("a07551"), Color("8c9371"), Color("5a3b27"), Color("5b4934"), Color("2f2722")],
 	"shirt": [Color("d7d0ad"), Color("c8b086"), Color("a5ab8c"), Color("d5bc91"), Color("e07b28")],
 	"pants": [Color("b58c54"), Color("7d7f78"), Color("4a463d"), Color("d9702a")],
 	"boots": [Color("694722"), Color("2c2823"), Color("3a3530")],
@@ -51,6 +51,13 @@ static func color(item: String, fallback: Color = UNDERWEAR) -> Color:
 ## The outfit implied by an id: matches the look people had before outfits existed.
 ## The law's clothes: a dark sheriff's hat, a leather vest with the star, dark trousers and boots.
 const SHERIFF := {"hat": "hat:3", "vest": "vest:4", "shirt": "shirt:1", "pants": "pants:2", "boots": "boots:1"}
+## Outlaws: a black hat, a dusty duster (the leader a long dark coat), dark trousers, black boots
+## and a bandana over the face (`mask`, drawn only: not a slot you can take or wear yet).
+const BANDIT := {"hat": "hat:4", "vest": "vest:5", "shirt": "shirt:1", "pants": "pants:2", "boots": "boots:1", "pack": "", "mask": "bandana:0"}
+const BANDIT_LEADER := {"hat": "hat:4", "vest": "vest:6", "shirt": "shirt:2", "pants": "pants:2", "boots": "boots:1", "pack": "", "mask": "bandana:1"}
+## Coats that hang below the hips.
+const LONG_COATS := ["vest:5", "vest:6"]
+const BANDANAS := [Color("8e3a2a"), Color("2f3b4c")]
 ## What prisoners are issued at booking: an orange shirt and trousers, plain boots, nothing else.
 const PRISONER := {"hat": "", "vest": "", "shirt": "shirt:4", "pants": "pants:3", "boots": "boots:2", "pack": ""}
 static func is_sheriff_gear(item: String) -> bool:

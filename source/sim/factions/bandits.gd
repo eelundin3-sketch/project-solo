@@ -41,6 +41,7 @@ const LINES := {
 static func ensure_camp(sim: RefCounted) -> void:
 	var s: Dictionary = sim.state
 	if s.has("bandits") and not bool(s.bandits.get("props", false)): _place_props(s)
+	if s.has("bandits"): _dress(s)
 	# Full games only (towns with families); bare test worlds get no camp.
 	if s.has("bandits") or not s.has("settlements") or not s.has("residents") or not s.has("accounts") or not s.has("households"): return
 	var spot: Array = _camp_spot(s)
@@ -64,7 +65,15 @@ static func ensure_camp(sim: RefCounted) -> void:
 	s.bandits = {"camp": camp_id, "cell": spot.duplicate(), "stash": stash, "members": members, "phase": "idle",
 		"since": s.tick, "leader": members[0], "cooldown_until": 0, "cleared": false, "health": {}}
 	_place_props(s)
+	_dress(s)
 	sim.record("Somewhere out in the wilds, a band of outlaws has made camp.")
+
+## Outlaw clothes: duster, black hat and a bandana; the leader in a long coat. Once (older saves too).
+static func _dress(s: Dictionary) -> void:
+	var Outfits = load("res://sim/entities/outfits.gd")
+	for id in s.bandits.members:
+		if str(Outfits.worn(s, int(id)).get("mask", "")).is_empty():
+			Outfits.dress(s, int(id), Outfits.BANDIT_LEADER if int(id) == int(s.bandits.leader) else Outfits.BANDIT)
 
 ## The camp spot: as far from every town as the map allows, well off the roads, on open ground.
 static func _camp_spot(s: Dictionary) -> Array:
@@ -301,6 +310,8 @@ static func _notices(s: Dictionary, able: Array, player: Array, from_camp: int) 
 static func _wake_all(s: Dictionary, able: Array) -> void:
 	for npc in able:
 		_sit_up(npc)
+		npc.gun_out = true                 # rifles out and on you (the view draws them aimed)
+		npc.aim_at = int(s.player)
 		if not npc.get("sleeping", {}).is_empty():
 			npc.sleeping = {}
 
@@ -417,6 +428,9 @@ static func _home(sim: RefCounted, phase: String) -> void:
 		var npc: Dictionary = members[i]
 		npc.path = []
 		npc.erase("fight_cover")
+		npc.erase("gun_out")
+		npc.erase("aim_at")
+		npc.erase("cover_cycle")
 		_sit_up(npc)
 		if _able(s, npc):
 			s.entities[str(npc.id)].cell = _seat(s.bandits.cell, i)
@@ -483,6 +497,9 @@ static func _cleared(sim: RefCounted) -> void:
 	if bool(b.cleared): return
 	b.cleared = true
 	b.phase = "cleared"
+	for npc in _members(s):
+		npc.erase("gun_out")
+		npc.erase("cover_cycle")
 	b.since = s.tick
 	var towns: Array = s.settlements.keys().map(func(k): return int(k))
 	towns.sort()

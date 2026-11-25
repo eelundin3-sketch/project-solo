@@ -108,6 +108,8 @@ const GETUP_KEYS: Array = [
 var pants_color: Color = PANTS
 var boot_color: Color = BOOT
 var hat_item: String = "<legacy>"
+var long_coat := false        # a duster or long coat hangs to the knees
+var mask_item := ""           # a bandana over the lower face ("bandana:N")
 var wears_badge := false
 ## Underwear only: no shirt shows bare arms (and chest, without a vest); no trousers shows bare legs and boxers.
 var bare_arms := false
@@ -919,6 +921,8 @@ func _paint() -> void:
 		boot_color = Outfits.color(str(outfit.get("boots", "")), skin.darkened(0.08))
 		hat_item = str(outfit.get("hat", ""))
 	wears_badge = str(outfit.get("vest", "")) == "vest:4"
+	long_coat = str(outfit.get("vest", "")) in Outfits.LONG_COATS
+	mask_item = str(outfit.get("mask", ""))
 	var near_side := -1 if across.y < 0 else 1
 	var arms: Dictionary = {-1: frame.left_arm, 1: frame.right_arm}
 	var legs: Dictionary = {-1: frame.left_leg, 1: frame.right_leg}
@@ -1235,6 +1239,13 @@ func _draw_coat(chest: Vector2, hip: Vector2, width: float, vest: Color, shirt: 
 		hip + Vector2(-width * 0.38, 2.1), hip + Vector2(-width * 0.74, -0.4),
 		center + Vector2(-width * 0.71, 1), chest + Vector2(-width * 0.89, 5),
 		chest + Vector2(-width * 0.91, 0.1)])
+	if long_coat and has_vest:
+		# Duster tails: open at the front, hanging from the waist to the knees, split up the back.
+		var hem: float = 6.0 if str(pose.get("action", "")) in ["sit", "cook", "tied"] else 13.0
+		for tail_side in [-1.0, 1.0]:
+			_shape(PackedVector2Array([hip + Vector2(tail_side * width * 0.78, -1.0), hip + Vector2(tail_side * 1.2, 0.5),
+				hip + Vector2(tail_side * 1.6, hem), hip + Vector2(tail_side * width * 0.98, hem - 1.0)]), vest.darkened(0.08), 1.2)
+			draw_line(hip + Vector2(tail_side * width * 0.5, 1.0), hip + Vector2(tail_side * width * 0.62, hem - 1.5), vest.darkened(0.3), 0.6, true)
 	_shape(_rounded(body, 0.18), vest, 1.6)
 	# A single side shadow follows the tailored waist. No inset plastic panel.
 	draw_colored_polygon(PackedVector2Array([chest + Vector2(width * 0.57, -0.5), chest + Vector2(width * 0.88, 0.2),
@@ -1399,6 +1410,20 @@ func _draw_head(head: Vector2, skin: Color) -> void:
 			for dot in range(9):
 				var along: float = float(dot) / 8.0
 				draw_circle(face + Vector2(lerpf(-4.8, 4.8, along), 5.2 + sin(along * PI) * 2.6), 0.42, Color(hair, 0.55), true, -1, true)
+		if not mask_item.is_empty():
+			# A bandana pulled up over the nose and mouth, tied behind the head.
+			var cloth: Color = Outfits.BANDANAS[int(mask_item.get_slice(":", 1)) % Outfits.BANDANAS.size()]
+			var low: PackedVector2Array
+			if profile:
+				low = PackedVector2Array([face + Vector2(-side * 5.4, 0.6), face + Vector2(side * 6.8, 0.4), face + Vector2(side * 5.6, 4.6),
+					face + Vector2(side * 2.0, 9.6), face + Vector2(-side * 2.4, 7.4), face + Vector2(-side * 5.6, 2.6)])
+			else:
+				low = PackedVector2Array([face + Vector2(-6.7, 0.6), face + Vector2(6.7, 0.6), face + Vector2(5.4, 4.8),
+					face + Vector2(forward.x * 2.0, 10.6), face + Vector2(-5.4, 4.8)])
+			_shape(low, cloth, 0.9)
+			draw_line(face + Vector2(-4.5, 3.0), face + Vector2(4.5, 3.0), cloth.darkened(0.25), 0.6, true)
+			for dot in range(3):
+				draw_circle(face + Vector2(-3.0 + dot * 3.0 + forward.x * 1.5, 5.6), 0.5, cloth.lightened(0.35), true, -1, true)
 		# One visible ear and a shaped sideburn, away from the eyes.
 		var ear_side := -side if side != 0 else -1.0
 		var ear := face + Vector2(ear_side * 6.4, 1.6)

@@ -24,6 +24,23 @@ func _initialize() -> void:
 	check(str(Director.action_for(s, s.entities[str(s.player)]).action) == "tied", "A captive of the bandits is drawn tied up")
 	s.player_control.captive = {}
 
+	# Guns on you: a sheriff walking up aims, and so does a bandit holding you up.
+	var lawman: Dictionary = Law.sheriffs(s, 1)[0]
+	lawman.arrest = {"phase": "approach", "since": s.tick}
+	var lawman_action: Dictionary = Director.action_for(s, s.entities[str(lawman.id)])
+	check(str(lawman_action.action) == "aim" and int(lawman_action.target) == int(s.player), "A sheriff walking up to you points his gun at you")
+	lawman.erase("arrest")
+	var bandit: Dictionary = s.residents[str(s.bandits.members[1])]
+	load("res://sim/factions/bandits.gd")._wake_all(s, [bandit])
+	var bandit_action: Dictionary = Director.action_for(s, s.entities[str(bandit.id)])
+	check(str(bandit_action.action) == "aim" and int(bandit_action.target) == int(s.player), "A bandit holding you up aims at you")
+	bandit.cover_cycle = {"phase": "fire", "since": s.tick, "ammo": 3}
+	check(str(Director.action_for(s, s.entities[str(bandit.id)]).action) == "shoot", "A fighting bandit shoots from cover with the gun in his hands")
+	bandit.erase("cover_cycle")
+	bandit.erase("gun_out")
+	var Outfits = load("res://sim/entities/outfits.gd")
+	check(str(Outfits.worn(s, int(bandit.id)).get("mask", "")) != "" and str(Outfits.worn(s, int(bandit.id)).vest) in Outfits.LONG_COATS, "Bandits wear a bandana and a duster")
+
 	# Backpedalling: knees bend the way the body faces, and the steps are shorter.
 	var body := DrawnCharacter.new()
 	body.forward = Vector2.RIGHT
