@@ -23,6 +23,7 @@ const GIVE_UP_RANGE := 32      # they stop chasing you this far from the camp
 const CAPTIVE_MIN := 1200      # held at least two hours before you can slip free at night
 const CAPTIVE_MAX := 14400     # and never longer than a day
 const COOLDOWN := 14400        # after robbing you they leave you alone for a day
+const MAGAZINE_ROUNDS := 5       # shots before a reload
 const LOOT := ["rifle", "shotgun", "cartridge", "shell", "lantern"]
 const LINES := {
 	"demand": ["Hold it right there. Coins and the gun, now.", "That's far enough, friend. Empty your pockets.", "Easy now. Hand over your valuables and nobody gets hurt."],
@@ -31,7 +32,8 @@ const LINES := {
 	"captive": ["Tie this one up. Might be worth something.", "You're staying with us a while.", "Sit down and keep quiet."],
 	"fight": ["Wrong choice!", "Get him!", "You'll regret that!"],
 	"give_up": ["Let him run.", "Not worth the bullets.", "And stay away!"],
-	"beaten": ["Don't shoot! We're done!", "Enough! You win!"],
+	"beaten": ["Don't shoot! We're done!", "Enough! You win!", "All right, all right! I give up!"],
+	"flee": ["I'm getting out of here!", "Every man for himself!", "Not dying for this!"],
 	"chat": ["Quiet out here.", "Pass the coffee.", "Reckon a caravan's due soon.", "My boots are falling apart.", "Who's on watch tonight?", "Fine evening for it."],
 }
 
@@ -182,6 +184,7 @@ static func update(sim: RefCounted) -> void:
 	if captive(s): _captive(sim)
 	if bool(b.cleared):
 		if s.tick % 30 == 0: _leave(sim)
+		if s.tick % 2 == 0: _beaten_life(s)
 		return
 	if s.tick % 2 != 0: return
 	var pc: Dictionary = s.player_control
@@ -190,23 +193,27 @@ static func update(sim: RefCounted) -> void:
 	var from_camp: int = maxi(absi(player[0] - camp[0]), absi(player[1] - camp[1]))
 	var members: Array = _members(s)
 	var able: Array = members.filter(func(n: Dictionary) -> bool: return _able(s, n))
-	if able.is_empty():
+	if able.is_empty() or (_fighters(s, able).is_empty() and str(b.phase) != "idle"):
 		_cleared(sim)
 		return
 	var hurt: bool = _hurt_since_last(s, members)
 	if bool(pc.get("dead", false)):
 		if str(b.phase) != "idle": _home(sim, "idle")
 	elif str(b.phase) == "idle":
-		_idle(sim, able)
+		# Runaways come back an hour after it's over.
+		for npc in able:
+			if not npc.get("fleeing", []).is_empty() and s.tick - int(b.since) > 600 and s.entities[str(npc.id)].cell == npc.fleeing: npc.erase("fleeing")
+		_idle(sim, able.filter(func(n: Dictionary) -> bool: return n.get("fleeing", []).is_empty()))
 		var shot: int = int(s.get("shotgun", {}).get("last_shot", -1000))
 		if hurt or (from_camp <= NOTICE_RANGE + 8 and shot > s.tick - 4):
-			_start_fight(sim, able)
+			_start_fight(sim, able, hurt)
 		elif not captive(s) and s.tick >= int(b.cooldown_until) and _notices(s, able, player, from_camp):
 			_start_demand(sim, able)
 	elif str(b.phase) == "demand":
 		_demand(sim, able, player, from_camp, hurt)
 	elif str(b.phase) == "fight":
-		_fight(sim, able, player, from_camp)
+		_fight(sim, able, player, from_camp, hurt)
+	_run_off(s, members)
 
 ## Damage taken since the last check (the player shot, stabbed or punched one of them).
 static func _hurt_since_last(s: Dictionary, members: Array) -> bool:
@@ -294,7 +301,7 @@ static func _walk(s: Dictionary, npc: Dictionary, goal: Array) -> void:
 		npc.path = route.path if route.ok else []
 		npc.path_tick = s.tick
 		npc.path_goal = goal.duplicate()
-		if not route.ok: entity.cell = goal.duplicate()   # no way round: they get there anyway (camp ground)
+		# No way there right now: wait and try again in a moment (never jump there).
 	if not npc.path.is_empty():
 		var next: Array = npc.path.pop_front()
 		if World.walkable(s, next): entity.cell = next
@@ -348,65 +355,126 @@ static func _demand(sim: RefCounted, able: Array, player: Array, from_camp: int,
 		s.bandits.cooldown_until = s.tick + COOLDOWN
 		return
 	if hurt or from_camp > NOTICE_RANGE + 6 or s.tick - int(s.bandits.since) > DEMAND_WAIT:
-		_start_fight(sim, able)
+		_start_fight(sim, able, hurt)
 		return
 	var at: Array = s.entities[str(leader.id)].cell
 	if maxi(absi(at[0] - player[0]), absi(at[1] - player[1])) > 2 and s.tick % 4 == 0: _step(s, leader, player)
 
-static func _start_fight(sim: RefCounted, able: Array) -> void:
+static func _start_fight(sim: RefCounted, able: Array, lethal: bool = false) -> void:
 	var s: Dictionary = sim.state
 	_wake_all(s, able)
-	s.bandits.phase = "fight"
-	s.bandits.since = s.tick
+	var b: Dictionary = s.bandits
+	b.phase = "fight"
+	b.since = s.tick
+	b.lethal = lethal or bool(b.get("lethal", false))
+	b.flanker = 0
+	b.mover = 0
+	b.broke = false
 	_say(sim, _leader(s, able), "fight")
-	var player: Array = s.entities[str(s.player)].cell
-	var Gunfire = load("res://sim/combat/gunfire.gd")
+	# Positions: the leader up front pins you down, the next works round your side, the next holds
+	# the camp; any more split between the front and the flank.
+	var others: int = 0
 	for npc in able:
-		npc.status = "Diving for cover"
-		npc.fight_cover = Gunfire.find_cover(s, s.entities[str(npc.id)].cell, player)   # behind a tree or a rock; [] if none
+		npc.cover_cycle = {}
+		npc.erase("fight_cover")
+		if int(npc.id) == int(b.leader): npc.fight_role = "front"
+		else:
+			npc.fight_role = ["flank", "camp", "front", "flank"][others % 4]
+			others += 1
+		npc.status = {"front": "Taking cover up front", "flank": "Working round your side", "camp": "Holding the camp"}[npc.fight_role]
 	s.player_control.notice = "The bandits open fire! Surrender (F) to give up."
 
-## Fighting: each bandit closes to rifle range and shoots. You give up (surrender) or go down:
-## they rob you and tie you up. Run far enough and they let you go.
-static func _fight(sim: RefCounted, able: Array, player: Array, from_camp: int) -> void:
+## The bandits who are still fighting: able, not given up, not running.
+static func _fighters(s: Dictionary, able: Array) -> Array:
+	return able.filter(func(n: Dictionary) -> bool: return not bool(n.get("surrendered", false)) and n.get("fleeing", []).is_empty() and not bool(n.get("out_of_fight", false)))
+
+## Fighting, the sheriffs' way (gunfire.gd fight_cycle): cover, peek, fire, reload, move up while
+## you're quiet, flank, bandage. They want you alive to rob, so they aim for legs and gun arm until
+## you've hurt one of them. You give up or go down: robbed and tied up. Run far enough and they let
+## you go. Lose the leader, or two of them, and the rest give up or run.
+static func _fight(sim: RefCounted, able: Array, player: Array, from_camp: int, hurt: bool) -> void:
 	var s: Dictionary = sim.state
+	var b: Dictionary = s.bandits
 	var pc: Dictionary = s.player_control
 	var Brawl = load("res://sim/combat/brawl.gd")
+	if hurt: b.lethal = true
+	var fighters: Array = _fighters(s, able)
 	if bool(pc.get("surrender", false)) or Brawl.player_down(s):
-		var leader: Dictionary = _leader(s, able)
-		_rob(sim, leader)
-		pc.surrender = false
-		_take_captive(sim, leader)
-		_home(sim, "idle")
-		s.bandits.cooldown_until = s.tick + COOLDOWN
-		return
+		if fighters.is_empty(): pc.surrender = false
+		else:
+			var leader: Dictionary = _leader(s, fighters)
+			_rob(sim, leader)
+			pc.surrender = false
+			_take_captive(sim, leader)
+			_home(sim, "idle")
+			b.cooldown_until = s.tick + COOLDOWN
+			return
 	if from_camp > GIVE_UP_RANGE:
-		_say(sim, able[0], "give_up")
+		if not fighters.is_empty(): _say(sim, fighters[0], "give_up")
 		_home(sim, "idle")
-		s.bandits.cooldown_until = s.tick + COOLDOWN / 4
+		b.cooldown_until = s.tick + COOLDOWN / 4
 		return
+	_morale(sim, able)
+	fighters = _fighters(s, able)
+	if fighters.is_empty():
+		_cleared(sim)
+		return
+	b.last_shot = int(s.get("shotgun", {}).get("last_shot", -1000))
 	var Gunfire = load("res://sim/combat/gunfire.gd")
-	for npc in able:
+	var Bleeding = load("res://sim/combat/bleeding.gd")
+	for npc in fighters:
 		if not npc.get("brawl", {}).is_empty(): continue   # in a fistfight with you (brawl.gd)
 		var at: Array = s.entities[str(npc.id)].cell
-		var gap: float = Vector2(player[0] - at[0], player[1] - at[1]).length()
-		var cover: Array = npc.get("fight_cover", [])
-		if not cover.is_empty() and at != cover:
-			# Running for cover first.
-			if _turn(s, npc, 1): _walk(s, npc, cover)
-			npc.status = "Diving for cover"
+		if not Gunfire._hands_ok(s, npc) or Gunfire.Limbs_crawling(s, npc):
+			# Shot up too badly to fight: binds the wound if he can, and is out of it.
+			if Bleeding.bleeding(npc) and Inventory.amount(s, int(npc.id), "bandage") > 0 and npc.get("bandaging", {}).is_empty(): Bleeding.begin(s, npc)
+			npc.out_of_fight = true
+			npc.gun_out = false
+			npc.status = "Hit and out of the fight"
 			continue
-		if gap > SHOOT_RANGE - 2:
-			# Out of range: on to cover nearer the gunman, or straight at him.
-			if s.tick - int(npc.get("cover_tick", -1000)) > 120:
-				npc.cover_tick = s.tick
-				npc.fight_cover = Gunfire.next_cover(s, at, player)
-			if npc.get("fight_cover", []).is_empty() and _turn(s, npc, 2): _step(s, npc, player)
-			npc.status = "Closing in"
-		elif s.tick >= int(npc.get("next_shot", 0)):
-			npc.next_shot = s.tick + SHOT_EVERY + sim.random_int("bandits", 0, 20)
-			npc.status = "Shooting from cover" if not cover.is_empty() else "Shooting"
-			Gunfire.fire_at_player(sim, npc, at, true)
+		Gunfire.fight_cycle(sim, npc, b, at, player, {"lethal": bool(b.lethal), "magazine": MAGAZINE_ROUNDS,
+			"role": str(npc.get("fight_role", "front")), "guard": b.cell, "hide_ticks": 10 if str(npc.get("fight_role", "")) == "front" else 16})
+		npc.status = _fight_status(npc)
+
+static func _fight_status(npc: Dictionary) -> String:
+	match str(npc.get("cover_cycle", {}).get("phase", "hide")):
+		"peek", "fire": return "Shooting"
+		"advance": return "Working round your side" if bool(npc.cover_cycle.get("flank", false)) else "Moving up"
+		"bandage": return "Bandaging a wound"
+	return "Reloading behind cover" if int(npc.get("cover_cycle", {}).get("ammo", 1)) <= 0 else {"front": "Keeping you pinned down", "flank": "Covering your side", "camp": "Holding the camp"}.get(str(npc.get("fight_role", "")), "In cover")
+
+## Lose the leader, or two of the gang, and the rest have had enough: each gives up (hands up) or
+## runs for it, by a seeded roll; a badly hurt one always gives up.
+static func _morale(sim: RefCounted, able: Array) -> void:
+	var s: Dictionary = sim.state
+	var b: Dictionary = s.bandits
+	if bool(b.get("broke", false)): return
+	var members: Array = _members(s)
+	var down := 0
+	var leader_down := true
+	for npc in members:
+		var out: bool = not _able(s, npc) or bool(npc.get("out_of_fight", false))
+		if out: down += 1
+		elif int(npc.id) == int(b.leader): leader_down = false
+	if not leader_down and down < 2: return
+	b.broke = true
+	var camp: Array = b.cell
+	var player: Array = s.entities[str(s.player)].cell
+	for npc in _fighters(s, able):
+		npc.gun_out = false
+		npc.cover_cycle = {}
+		if int(npc.health) < 40 or sim.random_int("bandits", 0, 99) < 55:
+			npc.surrendered = true
+			npc.status = "Hands up, giving himself up"
+			_say(sim, npc, "beaten")
+		else:
+			# Away from you, well out past the camp.
+			var away := Vector2(camp[0] - player[0], camp[1] - player[1])
+			if away.length() < 1.0: away = Vector2(1, 0)
+			away = away.normalized() * 30.0
+			npc.fleeing = [camp[0] + roundi(away.x), camp[1] + roundi(away.y)]
+			npc.status = "Running for it"
+			_say(sim, npc, "flee")
 
 static func _step(s: Dictionary, npc: Dictionary, goal: Array) -> void:
 	var entity: Dictionary = s.entities[str(npc.id)]
@@ -432,9 +500,11 @@ static func _home(sim: RefCounted, phase: String) -> void:
 		npc.erase("aim_at")
 		npc.erase("cover_cycle")
 		_sit_up(npc)
-		if _able(s, npc):
-			s.entities[str(npc.id)].cell = _seat(s.bandits.cell, i)
-			npc.status = "Lounging by the fire"
+		npc.erase("fight_role")
+		npc.erase("out_of_fight")
+		npc.erase("surrendered")
+		if _able(s, npc) and not bool(npc.get("surrendered", false)) and npc.get("fleeing", []).is_empty():
+			npc.status = "Heading back to the fire"   # they walk back (camp life takes them to their places)
 
 # --- robbing, captivity, escape ----------------------------------------------------------------
 
@@ -507,6 +577,30 @@ static func _cleared(sim: RefCounted) -> void:
 	s.player_control.notice = "The bandits are beaten. Their loot is yours, and the towns will hear of it."
 	sim.record("The traveller drove the bandits from their camp.")
 
+## Beaten bandits walk back to the fire and sit (those who gave up keep their hands up while you're
+## near); runaways keep running.
+static func _beaten_life(s: Dictionary) -> void:
+	var members: Array = _members(s)
+	var player: Array = s.entities[str(s.player)].cell
+	_run_off(s, members)
+	for i in range(members.size()):
+		var npc: Dictionary = members[i]
+		if not _able(s, npc) or not npc.get("fleeing", []).is_empty() or npc.has("captor"): continue
+		var at: Array = s.entities[str(npc.id)].cell
+		if bool(npc.get("surrendered", false)) and maxi(absi(at[0] - player[0]), absi(at[1] - player[1])) <= 15: continue
+		if _turn(s, npc, 1) or s.entities[str(npc.id)].cell == _seat(s.bandits.cell, i): _do_at(s, npc, _seat(s.bandits.cell, i), "Beaten; keeping out of your way", SEATS[i % 3], false)
+
+## Bandits running for it: a step every tick towards their spot; there they stop and wait it out.
+static func _run_off(s: Dictionary, members: Array) -> void:
+	for npc in members:
+		var spot: Array = npc.get("fleeing", [])
+		if spot.is_empty() or not _able(s, npc): continue
+		if s.entities[str(npc.id)].cell == spot:
+			npc.status = "Lying low"
+			continue
+		_walk(s, npc, spot)
+		npc.running_tick = s.tick
+
 ## Beaten bandits who come round have had enough: they sit by the fire and never fight again.
 static func _leave(sim: RefCounted) -> void:
 	var s: Dictionary = sim.state
@@ -516,5 +610,4 @@ static func _leave(sim: RefCounted) -> void:
 		if not _able(s, npc) or npc.has("beaten"): continue
 		npc.beaten = true
 		npc.status = "Beaten; keeping out of your way"
-		s.entities[str(npc.id)].cell = _seat(s.bandits.cell, i)
 		_say(sim, npc, "beaten")

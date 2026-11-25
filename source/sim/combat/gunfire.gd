@@ -31,6 +31,7 @@ const HOLD_TICKS := 200          # a gunman who stops firing but keeps the gun o
 const SHOUT_GAP := 100           # a sheriff shouts at most once in this many ticks
 const FLANK_NEAR := 5            # a flanking spot is this close to the gunman...
 const FLANK_FAR := 10            # ...and no further
+const GUARD_RANGE := 8.0         # a bandit holding the camp fights once the gunman is this close to it
 const SAFE_AFTER_SHOT := 15       # only move while the gunman has not fired for this long (or is reloading)
 const Bleeding = preload("res://sim/combat/bleeding.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
@@ -250,16 +251,31 @@ static func engage(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: A
 			_shout(sim, npc, "I'm hit! I'm out!", true)
 			_stand_down(s, npc)
 		return
-	var cycle: Dictionary = npc.get("cover_cycle", {})
-	if cycle.is_empty():
-		cycle = {"phase": "hide", "since": s.tick, "ammo": MAGAZINE, "cover": [], "peek_to": []}
-		npc.cover_cycle = cycle
 	var lethal: bool = bool(alert.get("lethal", false))
 	var holding: bool = str(alert.phase) == "hold"
 	npc.status = "Shooting to kill" if lethal else ("Holding the gunman at gunpoint" if holding else "Taking cover and returning fire")
 	# A call now and then (not a constant stream): each sheriff at most once in SHOUT_GAP ticks.
 	if s.tick % 30 == int(npc.id) % 30 and s.tick - int(npc.get("last_shout", -10000)) >= SHOUT_GAP * 3:
 		_shout(sim, npc, "That's it! No more warnings!" if lethal else ("Put the gun down. Now." if holding else ["Drop the weapon!", "Stop shooting!", "Put it down, I won't ask again!"][(int(npc.id) + s.tick / 70) % 3]))
+	fight_cycle(sim, npc, alert, cell, player, {"lethal": lethal, "holding": holding, "magazine": MAGAZINE})
+
+## The fight itself, shared by sheriffs and bandits: hide behind cover, lean out and aim, fire,
+## back into cover; reload behind it; move up cover to cover only while the gunman is quiet and one
+## at a time (the `squad` record keeps who is moving and who flanks); bandage behind cover when hit.
+## `opts`: lethal, holding (no shots at someone who stopped), magazine, role ("front": pins him
+## down, quicker shots; "flank": works round the side at once; "camp": holds near `guard` and only
+## shoots when the gunman comes within GUARD_RANGE of it), hide_ticks.
+static func fight_cycle(sim: RefCounted, npc: Dictionary, squad: Dictionary, cell: Array, player: Array, opts: Dictionary) -> void:
+	var s: Dictionary = sim.state
+	var alert: Dictionary = squad
+	var lethal: bool = bool(opts.get("lethal", false))
+	var holding: bool = bool(opts.get("holding", false))
+	var magazine: int = int(opts.get("magazine", MAGAZINE))
+	var role: String = str(opts.get("role", ""))
+	var cycle: Dictionary = npc.get("cover_cycle", {})
+	if cycle.is_empty():
+		cycle = {"phase": "hide", "since": s.tick, "ammo": magazine, "cover": [], "peek_to": []}
+		npc.cover_cycle = cycle
 	var age: int = s.tick - int(cycle.since)
 	match str(cycle.phase):
 		"hide":
@@ -283,12 +299,25 @@ static func engage(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: A
 				return
 			if int(cycle.ammo) <= 0:
 				if age >= RELOAD_TICKS:
-					cycle.ammo = MAGAZINE
+					cycle.ammo = magazine
 					cycle.since = s.tick
 				return   # reloading, safely behind the wall
 			if holding:
 				return    # no shooting at someone who has stopped
-			if age >= HIDE_TICKS:
+			if role == "camp":
+				# Holding the camp: he only fights once the gunman comes close to it.
+				var guard: Array = opts.get("guard", cell)
+				if Vector2(player[0] - guard[0], player[1] - guard[1]).length() > GUARD_RANGE: return
+			if role == "flank" and not bool(cycle.get("flanked", false)) and _may_move(s, alert, npc):
+				# The flanker goes wide round the side at once, while the others keep the gunman busy.
+				cycle.flanked = true
+				var wide: Array = _flank_spot(s, cell, player)
+				if not wide.is_empty():
+					alert.flanker = int(npc.id)
+					cycle.flank = true
+					_start_advance(s, alert, npc, cycle, wide, "Working round the side")
+					return
+			if age >= int(opts.get("hide_ticks", HIDE_TICKS)):
 				var distance: float = Vector2(player[0] - cell[0], player[1] - cell[1]).length()
 				# Out of reach of his shotgun: close in, cover to cover, or straight in at a crouch.
 				if distance > SHOOT_RANGE and _may_move(s, alert, npc):
@@ -396,7 +425,8 @@ static func _start_advance(s: Dictionary, alert: Dictionary, npc: Dictionary, cy
 	npc.status = status
 
 static func _is_engaged(s: Dictionary, id: int) -> bool:
-	return str(s.get("residents", {}).get(str(id), {}).get("arrest", {}).get("phase", "")) == "engage"
+	var npc: Dictionary = s.get("residents", {}).get(str(id), {})
+	return str(npc.get("arrest", {}).get("phase", "")) == "engage" or (bool(npc.get("gun_out", false)) and not npc.get("cover_cycle", {}).is_empty())
 
 ## A walkable cell `reach` cells from the gunman along the line towards `from` (the nearest open
 ## cell to that point). [] if none.
@@ -453,7 +483,7 @@ static func next_cover(s: Dictionary, from: Array, target: Array) -> Array:
 
 ## One careful step along a path (no running).
 static func _creep_to(s: Dictionary, npc: Dictionary, goal: Array) -> void:
-	var arrest: Dictionary = npc.arrest
+	var arrest: Dictionary = _memo(npc)
 	if s.tick - int(arrest.get("path_tick", -100)) >= 12 or npc.path.is_empty():
 		var route = load("res://sim/movement/navigation.gd").request_path(s, s.entities[str(npc.id)].cell, goal)
 		arrest.path_tick = s.tick
@@ -468,8 +498,13 @@ static func _hands_ok(s: Dictionary, npc: Dictionary) -> bool:
 static func Limbs_crawling(s: Dictionary, npc: Dictionary) -> bool:
 	return load("res://sim/combat/limbs.gd").crawling(s, int(npc.id))
 
+## Where a fighter keeps his path bookkeeping: a sheriff's arrest record, else his cover cycle.
+static func _memo(npc: Dictionary) -> Dictionary:
+	var arrest: Dictionary = npc.get("arrest", {})
+	return arrest if not arrest.is_empty() else npc.cover_cycle
+
 static func _run_to(s: Dictionary, npc: Dictionary, goal: Array) -> void:
-	var arrest: Dictionary = npc.arrest
+	var arrest: Dictionary = _memo(npc)
 	if s.tick - int(arrest.get("path_tick", -100)) >= 8 or npc.path.is_empty():
 		var route = load("res://sim/movement/navigation.gd").request_path(s, s.entities[str(npc.id)].cell, goal)
 		arrest.path_tick = s.tick

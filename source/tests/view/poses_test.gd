@@ -38,6 +38,9 @@ func _initialize() -> void:
 	check(str(Director.action_for(s, s.entities[str(bandit.id)]).action) == "shoot", "A fighting bandit shoots from cover with the gun in his hands")
 	bandit.erase("cover_cycle")
 	bandit.erase("gun_out")
+	bandit.surrendered = true
+	check(str(Director.action_for(s, s.entities[str(bandit.id)]).action) == "surrender", "A bandit who gives up puts his hands up")
+	bandit.erase("surrendered")
 	var Outfits = load("res://sim/entities/outfits.gd")
 	check(str(Outfits.worn(s, int(bandit.id)).get("mask", "")) != "" and str(Outfits.worn(s, int(bandit.id)).vest) in Outfits.LONG_COATS, "Bandits wear a bandana and a duster")
 

@@ -46,7 +46,7 @@ func _initialize() -> void:
 		if str(s2.bandits.phase) == "fight": fought = true
 		for id in s2.bandits.members:
 			var npc: Dictionary = s2.residents[str(id)]
-			var cover: Array = npc.get("fight_cover", [])
+			var cover: Array = npc.get("cover_cycle", {}).get("cover", [])
 			if not cover.is_empty() and s2.entities[str(id)].cell == cover: took_cover = true
 		if took_cover: break
 	check(fought, "Shooting near the camp starts a fight")

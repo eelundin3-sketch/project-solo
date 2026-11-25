@@ -73,6 +73,10 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		result.action = "stagger" if npc.get("impact_kind", "") == "shove" else "hit"
 		result.phase = 1.0 - float(npc.impact_until - s.tick) / 12.0
 		return result
+	# A bandit who has given up: hands in the air (bandits.gd morale).
+	if not npc.is_empty() and bool(npc.get("surrendered", false)):
+		result.action = "surrender"
+		return result
 	# Anyone else with a gun out (a bandit holding you up or fighting, bandits.gd): the cover cycle
 	# if they have one, otherwise the gun up and pointed at whoever they're covering, walking or not.
 	if not npc.is_empty() and bool(npc.get("gun_out", false)) and npc.get("arrest", {}).is_empty():

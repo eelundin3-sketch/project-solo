@@ -85,7 +85,7 @@ func _initialize() -> void:
 	check(fought >= 0, "Ignore the demand and they fight")
 	var shots := step_until(sim2, 400, func():
 		for id in s2.bandits.members:
-			if int(s2.residents[str(id)].get("next_shot", 0)) > 0: return true
+			if int(s2.residents[str(id)].get("shot_tick", -1)) >= 0: return true
 		return false)
 	check(shots >= 0, "They shoot at you")
 	sim2.submit("surrender"); sim2.step(); sim2.step(); sim2.step()
