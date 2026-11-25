@@ -17,6 +17,7 @@ const Probe = preload("res://sim/diagnostics/perf_probe.gd")
 const NightLayer = preload("res://view/world/night_layer.gd")
 const DayClock = preload("res://sim/world/day_clock.gd")
 const WeatherLayer = preload("res://view/world/weather_layer.gd")
+const Roofs = preload("res://view/world/roofs.gd")
 const CELL: float = 24.0
 ## Characters are drawn at half size so they are in proportion to doors, furniture and trees.
 const CHAR_SCALE: float = 0.625
@@ -59,6 +60,8 @@ var last_zoom: Vector2 = Vector2.ZERO
 var daylight: CanvasModulate
 var night: Node2D            # darkness with lamp, window and lantern pools (night_layer.gd)
 var weather_layer: Node2D    # rain, snow and fog over the people (weather_layer.gd)
+var roofs_layer := Roofs.new()  # a roof on every building but the one you're in (roofs.gd)
+var label_layer: Node2D        # town names, above the roofs
 var building_rects: Array[Rect2i] = []
 var building_rects_signature: Array = []
 var atmosphere_time: float = 0.0
@@ -221,6 +224,10 @@ func _ready() -> void:
 	weather_layer = WeatherLayer.new()
 	weather_layer.z_index = 14   # over the people, under the night
 	add_child(weather_layer)
+	label_layer = LabelLayer.new()
+	label_layer.view = self
+	label_layer.z_index = 16   # town names over the roofs and the night
+	add_child(label_layer)
 	night = NightLayer.new()
 	night.projector = self
 	night.z_index = 15   # over the world and the people, under the speech bubbles
@@ -240,6 +247,14 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	motion.view_cells = Rect2i(floori(tracked.position.x / CELL), floori(tracked.position.y / CELL), ceili(tracked.size.x / CELL) + 1, ceili(tracked.size.y / CELL) + 1)
 	motion.update(simulation.state, delta, paused, speed)
 	t = _lap("v:animation_director", t)
+	var player_key := str(simulation.state.get("player", 0))
+	var player_point: Vector2 = motion.actors.get(player_key, {}).get("position", Vector2.ZERO)
+	roofs_layer.sync(self, simulation.state, player_point, is_far())
+	if is_far() != decor_far:
+		# Zoomed far out, a building is just its roof: its floor image is not drawn.
+		decor_far = is_far()
+		for decor_key in decor_nodes:
+			if str(decor_key).begins_with("building:"): decor_nodes[decor_key].visible = not decor_far
 	_sync_characters(0.0 if paused else minf(delta, 0.1) * speed)
 	t = _lap("v:characters_sync", t)
 	if not paused: atmosphere_time += minf(delta, 0.1) * speed
@@ -393,6 +408,8 @@ func _sync_characters(delta: float = -1.0) -> void:
 			character.setup(entity.id, entity.kind == "player", entity.kind == "raider")
 			character_models[key] = character
 		character_models[key].z_index = 2 if pose.get("action", "") == "rest" and int(pose.get("rest_rot", -1)) >= 0 else 0  # sleepers lie on top of the bed
+		# Inside a building with its roof on (not the one you're in): not seen, and not drawn.
+		character_models[key].visible = not roofs_layer.covered(simulation.state, key, pose.position)
 		# On the map a figure is a few pixels tall: it still moves every frame, but its pose is
 		# repainted on one frame in four (staggered), which is not visible at that size.
 		var zoom: float = get_viewport().get_camera_2d().zoom.x if get_viewport().get_camera_2d() != null else 1.0
@@ -773,7 +790,7 @@ func _draw_world() -> void:
 		var point := Vector2(entity.cell[0], entity.cell[1]) * CELL
 		if motion.actors.has(str(entity.id)):
 			point = motion.actors[str(entity.id)].position
-		if bounds.has_point(point):
+		if bounds.has_point(point) and not roofs_layer.covered(s, str(entity.id), point):   # not inside a roofed building
 			visible.append({"entity": entity, "point": point})
 	visible.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.point.y < b.point.y or (a.point.y == b.point.y and a.entity.id < b.entity.id))
 	visible_entities = visible.size()
@@ -793,7 +810,7 @@ func _draw_world() -> void:
 			var fire_at := Vector2(camp.cell[0], camp.cell[1]) * CELL
 			if bounds.has_point(fire_at): MapArt.campfire_flames(self, fire_at, atmosphere_time)
 	_draw_travel_goal(s)
-	_draw_map_labels(s)
+	label_layer.queue_redraw()
 	_lap("dw:labels+weather", t)
 
 ## Blood left on the ground by fights (pools and flung drops that darken as they dry), a short
@@ -859,8 +876,14 @@ func _draw_travel_goal(s: Dictionary) -> void:
 func atime_for_marker() -> float:
 	return atmosphere_time
 
+## Town names sit on a layer of their own so the roofs never cover them.
+class LabelLayer extends Node2D:
+	var view: Node2D
+	func _draw() -> void:
+		if view.simulation != null: view._draw_map_labels(self, view.simulation.state)
+
 ## On the map view: settlement names and a marker on the player, sized for the screen not the world.
-func _draw_map_labels(s: Dictionary) -> void:
+func _draw_map_labels(c: CanvasItem, s: Dictionary) -> void:
 	var camera := get_viewport().get_camera_2d()
 	if camera == null or camera.zoom.x >= 0.6: return
 	var inverse: float = 1.0 / camera.zoom.x
@@ -869,14 +892,8 @@ func _draw_map_labels(s: Dictionary) -> void:
 		var store: Array = s.entities[str(town.warehouse)].cell
 		var at := Vector2(store[0], store[1] - 16) * CELL
 		var size: Vector2 = font.get_string_size(town.name, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * inverse))
-		draw_rect(Rect2(at + Vector2(-size.x / 2.0 - 8 * inverse, -size.y), size + Vector2(16 * inverse, 6 * inverse)), Color(0.07, 0.06, 0.04, 0.6))
-		draw_string(font, at + Vector2(-size.x / 2.0, -4 * inverse), town.name, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * inverse), Color("f7e3ac"))
-	var player: Dictionary = s.entities.get(str(s.get("player", 0)), {})
-	if not player.is_empty():
-		var position: Vector2 = motion.actors.get(str(player.id), {}).get("position", Vector2(player.cell[0], player.cell[1]) * CELL)
-		draw_circle(position, 9.0 * inverse, Color(0.07, 0.06, 0.04, 0.75))
-		draw_circle(position, 6.5 * inverse, Color("ffd45a"))
-		draw_string(font, position + Vector2(12 * inverse, 5 * inverse), "You", HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * inverse), Color("fff2ce"))
+		c.draw_rect(Rect2(at + Vector2(-size.x / 2.0 - 8 * inverse, -size.y), size + Vector2(16 * inverse, 6 * inverse)), Color(0.07, 0.06, 0.04, 0.6))
+		c.draw_string(font, at + Vector2(-size.x / 2.0, -4 * inverse), town.name, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * inverse), Color("f7e3ac"))
 
 func _draw_combat(s: Dictionary) -> void:
 	var combat: Dictionary = s.get("local_combat", {})
@@ -983,7 +1000,6 @@ func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D 
 					canvas.draw_line(previous, next, Color(0.9, 0.8, 0.5, 0.55), 2)
 					previous = next
 		"player":
-			canvas.draw_string(font, p + Vector2(-9, -52), "YOU", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color("fff2ce"))
 			_name_tag(canvas, p, entity.name, Color("ffe9a8"))
 		"farm":
 			if Crops.plot_for_farm(s, entity.id).is_empty(): MapArt.farm(canvas, p, s.inventories[str(entity.id)].items.get("food", 0))
@@ -1269,6 +1285,7 @@ func is_far() -> bool:
 	return camera != null and camera.zoom.x < FAR_ZOOM
 
 var decor_nodes: Dictionary = {}
+var decor_far: bool = false
 var decor_signatures: Dictionary = {}
 var door_hold: Dictionary = {}
 var overlay_labels: bool = false      # set by the controller while the map overlay is up
@@ -1305,6 +1322,7 @@ func _sync_decor(delta: float) -> void:
 			add_child(node)
 			move_child(node, background.get_index())
 			decor_nodes[key] = node
+			if decor_far and str(key).begins_with("building:"): node.visible = false
 		if entry[0] == "building": decor_nodes[key].modulate = house_tint(s, int(entry[1]))
 		if decor_signatures.get(key, "") != entry[2]:
 			decor_signatures[key] = entry[2]
@@ -1318,6 +1336,7 @@ func _sync_decor(delta: float) -> void:
 
 ## Name plate centred underneath a character; it follows the actor's drawn position.
 func _name_tag(canvas: Node2D, p: Vector2, label: String, color: Color) -> void:
+	if is_far(): return   # zoomed out to the overview: no name tags
 	var size: Vector2 = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10)
 	var origin: Vector2 = p + Vector2(-size.x / 2.0, 14)
 	canvas.draw_rect(Rect2(origin + Vector2(-2, -9), size + Vector2(4, 3)), Color(0.07, 0.06, 0.04, 0.55))
