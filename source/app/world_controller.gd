@@ -139,7 +139,7 @@ func _ready() -> void:
 	knockout = KnockoutScreen.new()
 	add_child(knockout)
 	knockout.skip_requested.connect(_skip_ahead)
-	knockout.wait_requested.connect(_skip_ahead)
+	knockout.wait_requested.connect(_wait_out)
 	knockout.load_requested.connect(func() -> void: handle_action("load"))
 	knockout.new_game_requested.connect(func() -> void:
 		Engine.set_meta("skip_title", true)
@@ -204,6 +204,98 @@ func _start_from_menu() -> void:
 	intro_tween.tween_property($ObserverCamera, "zoom", Vector2.ONE * 2.0, 1.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	intro_tween.tween_callback(_finish_intro)
 
+# --- a long sentence passes in a few seconds -------------------------------------------------------
+
+const CATCH_UP_OVER := 2400       # ticks: sentences longer than four hours are caught up, not fast-forwarded
+const CATCH_UP_BUDGET := 12000    # microseconds of simulation a frame while catching up
+var catching_up: bool = false
+var catch_up_card: CanvasLayer
+var catch_up_clock: Label
+var catch_up_bar: ProgressBar
+var catch_up_total: int = 1
+
+## "Wait it out": a long sentence is caught up behind a card (the world simulated flat out, nothing
+## drawn); a short one fast-forwards as before.
+func _wait_out() -> void:
+	var jail: Dictionary = simulation.state.get("player_control", {}).get("jail", {})
+	var left: int = int(jail.get("until", 0)) - int(simulation.state.tick)
+	if not jail.is_empty() and not bool(jail.get("releasing", false)) and left > CATCH_UP_OVER: _start_catch_up(left)
+	else: _skip_ahead()
+
+func _start_catch_up(left: int) -> void:
+	if catch_up_card == null: _build_catch_up_card()
+	catching_up = true
+	catch_up_total = maxi(1, left - JAIL_WAIT_STOP)
+	catch_up_card.visible = true
+	world_audio.stop_effects()
+	_catch_up_labels()
+
+func _catch_up_frame() -> void:
+	var s: Dictionary = simulation.state
+	var started := Time.get_ticks_usec()
+	while Time.get_ticks_usec() - started < CATCH_UP_BUDGET:
+		var jail: Dictionary = s.get("player_control", {}).get("jail", {})
+		if jail.is_empty() or bool(jail.get("releasing", false)) or int(jail.until) - int(s.tick) <= JAIL_WAIT_STOP or bool(s.player_control.get("dead", false)):
+			_end_catch_up()
+			return
+		simulation.step()
+	_catch_up_labels()
+
+func _end_catch_up() -> void:
+	catching_up = false
+	if catch_up_card != null: catch_up_card.visible = false
+	clock.accumulator = 0
+	$WorldView.snap_visuals()
+	simulation.state.player_control.notice = "Two minutes left."
+	refresh_view()
+
+func _catch_up_labels() -> void:
+	var s: Dictionary = simulation.state
+	var jail: Dictionary = s.get("player_control", {}).get("jail", {})
+	var left: int = maxi(0, int(jail.get("until", s.tick)) - int(s.tick) - JAIL_WAIT_STOP)
+	var minute: int = (int(s.tick) / 10) % 1440
+	catch_up_clock.text = "Day %d · %02d:%02d" % [int(s.tick) / 14400 + 1, minute / 60, minute % 60]
+	catch_up_bar.value = 100.0 * (1.0 - float(left) / float(catch_up_total))
+
+func _build_catch_up_card() -> void:
+	catch_up_card = CanvasLayer.new()
+	catch_up_card.layer = 40
+	add_child(catch_up_card)
+	var dark := ColorRect.new()
+	dark.color = Color(0.04, 0.035, 0.03, 1.0)
+	dark.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	catch_up_card.add_child(dark)
+	var column := VBoxContainer.new()
+	column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	column.offset_left = -200
+	column.offset_right = 200
+	column.offset_top = -60
+	column.offset_bottom = 60
+	column.add_theme_constant_override("separation", 12)
+	catch_up_card.add_child(column)
+	var title := Label.new()
+	title.text = "Time passes…"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", Color("efe3c6"))
+	column.add_child(title)
+	catch_up_clock = Label.new()
+	catch_up_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	catch_up_clock.add_theme_font_size_override("font_size", 18)
+	catch_up_clock.add_theme_color_override("font_color", Color("b9a98a"))
+	column.add_child(catch_up_clock)
+	catch_up_bar = ProgressBar.new()
+	catch_up_bar.custom_minimum_size = Vector2(400, 10)
+	catch_up_bar.show_percentage = false
+	column.add_child(catch_up_bar)
+	var hint := Label.new()
+	hint.text = "Serving your sentence · Esc to stop"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color("8f826a"))
+	column.add_child(hint)
+	catch_up_card.visible = false
+
 ## Waiting out a jail sentence: the fast-forward stops with two in-game minutes left (looking one
 ## frame ahead so it never overshoots), so the release plays out at the speed you had.
 const JAIL_WAIT_STOP := 20   # ticks: two in-game minutes
@@ -239,6 +331,9 @@ func _finish_intro() -> void:
 
 func _process(delta: float) -> void:
 	if perf != null: perf.sample(delta)
+	if catching_up:
+		_catch_up_frame()
+		return   # nothing of the world is drawn or animated while time passes
 	if menu_active and intro_tween == null:
 		menu_time += delta
 		$ObserverCamera.position = _menu_camera(menu_time)
@@ -415,6 +510,15 @@ func handle_action(kind: String) -> void:
 
 func _input(event: InputEvent) -> void:
 	if menu_active: return
+	if catching_up:
+		# Time passing behind the card: Esc stops it there; nothing else gets through.
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+			catching_up = false
+			catch_up_card.visible = false
+			clock.accumulator = 0
+			$WorldView.snap_visuals()
+		get_viewport().set_input_as_handled()
+		return
 	if is_paused_menu():
 		# The pause menu is up: Esc resumes; everything else goes to its buttons (or nowhere).
 		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
