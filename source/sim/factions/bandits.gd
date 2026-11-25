@@ -40,6 +40,7 @@ const LINES := {
 ## Places the camp and its three bandits once (a new game, or an older save on load).
 static func ensure_camp(sim: RefCounted) -> void:
 	var s: Dictionary = sim.state
+	if s.has("bandits") and not bool(s.bandits.get("props", false)): _place_props(s)
 	# Full games only (towns with families); bare test worlds get no camp.
 	if s.has("bandits") or not s.has("settlements") or not s.has("residents") or not s.has("accounts") or not s.has("households"): return
 	var spot: Array = _camp_spot(s)
@@ -62,6 +63,7 @@ static func ensure_camp(sim: RefCounted) -> void:
 		members.append(id)
 	s.bandits = {"camp": camp_id, "cell": spot.duplicate(), "stash": stash, "members": members, "phase": "idle",
 		"since": s.tick, "leader": members[0], "cooldown_until": 0, "cleared": false, "health": {}}
+	_place_props(s)
 	sim.record("Somewhere out in the wilds, a band of outlaws has made camp.")
 
 ## The camp spot: as far from every town as the map allows, well off the roads, on open ground.
@@ -86,8 +88,8 @@ static func _camp_spot(s: Dictionary) -> Array:
 	return best
 
 static func _clear(s: Dictionary, TownLayout: GDScript, at: Array) -> bool:
-	for dy in range(-3, 4):
-		for dx in range(-4, 5):
+	for dy in range(-9, 8):
+		for dx in range(-9, 10):
 			var c: Array = [at[0] + dx, at[1] + dy]
 			if not World.walkable(s, c) or World.inside_building(s, c) != 0: return false
 	for r in [6, 10]:
@@ -95,17 +97,43 @@ static func _clear(s: Dictionary, TownLayout: GDScript, at: Array) -> bool:
 			if TownLayout.on_road(s, [at[0] + d[0], at[1] + d[1]]): return false
 	return true
 
+## The camp's layout, in cells from the fire: three tents behind it (each bandit sleeps inside
+## his own), log seats round the fire, the cooking pot, a woodpile, the lookout spot and the post.
+const TENTS := [[-6, -5], [0, -7], [6, -5]]
+const SEATS := [[-2, 1], [2, 1], [0, 2]]
+const POT := [1, -1]
+const WOODPILE := [8, 2]
+const LOOKOUT := [0, 7]
+const POST := [-5, 3]
+const ROUTINE := ["sit", "cook", "wood", "watch"]
+## Solid things round the camp to crouch behind in a fight: the woodpile (beside its fetching
+## spot), crates and a couple of rocks. Blocked cells, so they are low cover (cover.gd).
+const PROPS := {"woodpile": [[9, 2], [10, 2]], "crate": [[-3, -2], [4, -2], [-3, 5], [3, 5]], "rock": [[-8, 2], [7, -1]]}   # what each bandit does, turn by turn, hour by hour
+
+static func _place_props(s: Dictionary) -> void:
+	for kind in PROPS:
+		for offset in PROPS[kind]: World.apply_mutation(s, at_camp(s.bandits.cell, offset), true)
+	s.bandits.props = true
+
+## True on this bandit's turn to step. Bandits are updated on even ticks only (update()), so a step
+## every `every` updates is spread over them by id (a plain `tick % 4 == id % 4` never fired for
+## odd ids, and they stood still).
+static func _turn(s: Dictionary, npc: Dictionary, every: int) -> bool:
+	return (int(s.tick) / 2 + int(npc.id)) % maxi(1, every) == 0
+
+static func at_camp(spot: Array, offset: Array) -> Array:
+	return [spot[0] + offset[0], spot[1] + offset[1]]
+
 ## Where each bandit sits by the fire.
 static func _seat(spot: Array, i: int) -> Array:
-	return [[spot[0] - 2, spot[1] + 1], [spot[0] + 2, spot[1] + 1], [spot[0], spot[1] + 2]][i % 3]
+	return at_camp(spot, SEATS[i % 3])
 
-## Where a bandit sleeps (in front of the tents) and where a captive is tied (the post).
+## Where a bandit sleeps: inside his tent.
 static func _bed(spot: Array, i: int) -> Array:
-	return [[spot[0] - 3, spot[1] - 2], [spot[0], spot[1] - 3], [spot[0] + 3, spot[1] - 3]][i % 3]
+	return at_camp(spot, TENTS[i % 3])
 
 static func post(s: Dictionary) -> Array:
-	var spot: Array = s.bandits.cell
-	return [spot[0] - 4, spot[1] + 2]
+	return at_camp(s.bandits.cell, POST)
 
 # --- questions other systems ask ---------------------------------------------------------------
 
@@ -160,7 +188,7 @@ static func update(sim: RefCounted) -> void:
 	if bool(pc.get("dead", false)):
 		if str(b.phase) != "idle": _home(sim, "idle")
 	elif str(b.phase) == "idle":
-		if s.tick % 10 == 0: _idle(sim, able)
+		_idle(sim, able)
 		var shot: int = int(s.get("shotgun", {}).get("last_shot", -1000))
 		if hurt or (from_camp <= NOTICE_RANGE + 8 and shot > s.tick - 4):
 			_start_fight(sim, able)
@@ -181,31 +209,86 @@ static func _hurt_since_last(s: Dictionary, members: Array) -> bool:
 		s.bandits.health[str(npc.id)] = now
 	return hurt
 
-## Lounging: drifting about the fire, chatting; asleep in front of the tents at night.
+## Camp life. At night each sleeps in his tent. By day each does, hour by hour and in turn: sits by
+## the fire, cooks at the pot, fetches wood from the pile, or keeps watch at the edge of camp.
 static func _idle(sim: RefCounted, able: Array) -> void:
 	var s: Dictionary = sim.state
 	var spot: Array = s.bandits.cell
-	for i in range(able.size()):
-		var npc: Dictionary = able[i]
+	var hour: int = DayClock.hour(s)
+	for npc in able:
 		var index: int = s.bandits.members.find(int(npc.id))
 		var entity: Dictionary = s.entities[str(npc.id)]
 		if DayClock.bed_hours(s, npc):
+			_sit_up(npc)
+			var bed: Array = _bed(spot, index)
+			if entity.cell != bed and npc.get("sleeping", {}).is_empty():
+				if _turn(s, npc, 2): _walk(s, npc, bed)
+				npc.status = "Turning in"
+				if entity.cell != bed: continue
 			if npc.get("sleeping", {}).is_empty():
-				var bed: Array = _bed(spot, index)
 				entity.cell = bed.duplicate()
 				npc.sleeping = {"lie": bed.duplicate(), "approach": bed.duplicate(), "rot": 1, "bed_rect": [], "night": true, "since": s.tick}
-				npc.status = "Asleep by the tents"
+				npc.status = "Asleep in his tent"
 			continue
 		if not npc.get("sleeping", {}).is_empty():
 			npc.sleeping = {}
-			entity.cell = _seat(spot, index)
-		npc.status = "Lounging by the fire"
-		if s.tick % 300 == int(npc.id) % 30 * 10:
-			var seat: Array = _seat(spot, index)
-			var c: Array = [seat[0] + sim.random_int("bandits", -1, 1), seat[1] + sim.random_int("bandits", -1, 1)]
-			if World.walkable(s, c): entity.cell = c
+		var task: String = ROUTINE[(hour + index) % ROUTINE.size()]
+		match task:
+			"sit": _do_at(s, npc, _seat(spot, index), "Sitting by the fire", SEATS[index % 3], false)
+			"cook": _do_at(s, npc, at_camp(spot, POT), "Cooking at the fire", POT, true)
+			"watch":
+				_sit_up(npc)
+				var post_cell: Array = at_camp(spot, LOOKOUT)
+				if entity.cell != post_cell and _turn(s, npc, 2): _walk(s, npc, post_cell)
+				npc.status = "Keeping watch" if entity.cell == post_cell else "Going to keep watch"
+			"wood":
+				_sit_up(npc)
+				# To the woodpile and back with an armful, then sit for the rest of the hour.
+				var pile: Array = at_camp(spot, WOODPILE)
+				var fetched: bool = int(npc.get("wood_hour", -1)) == int(s.tick) / 600
+				if not fetched:
+					if entity.cell != pile:
+						if _turn(s, npc, 2): _walk(s, npc, pile)
+						npc.status = "Fetching firewood"
+					else:
+						npc.wood_hour = int(s.tick) / 600
+						npc.status = "Picking up firewood"
+				else:
+					_do_at(s, npc, _seat(spot, index), "Back with the firewood", SEATS[index % 3], false)
 	if s.tick % 1200 == 0 and able.size() >= 2 and able[0].get("sleeping", {}).is_empty() and able[1].get("sleeping", {}).is_empty():
 		_say(sim, able[0], "chat")
+
+## Walk to `cell` (a step at a time) and sit down there on the ground, facing the fire.
+static func _do_at(s: Dictionary, npc: Dictionary, cell: Array, status: String, offset: Array, cooking: bool) -> void:
+	var entity: Dictionary = s.entities[str(npc.id)]
+	if entity.cell != cell:
+		_sit_up(npc)
+		if _turn(s, npc, 2): _walk(s, npc, cell)
+		npc.status = "Walking over to the fire"
+		return
+	var face: Array = [-signi(int(offset[0])), -signi(int(offset[1]))]
+	if face == [0, 0]: face = [0, -1]
+	if npc.get("sitting", {}).is_empty() or bool(npc.get("cooking", false)) != cooking:
+		npc.sitting = {"chair": cell.duplicate(), "approach": cell.duplicate(), "face": face, "since": s.tick, "ground": true}
+		npc.cooking = cooking
+	npc.status = status
+
+static func _sit_up(npc: Dictionary) -> void:
+	npc.erase("sitting")
+	npc.erase("cooking")
+
+## One step towards `goal` (onto it on arrival) along a path worked out now and then.
+static func _walk(s: Dictionary, npc: Dictionary, goal: Array) -> void:
+	var entity: Dictionary = s.entities[str(npc.id)]
+	if npc.get("path", []).is_empty() or int(npc.get("path_tick", -1000)) < s.tick - 40 or npc.get("path_goal", []) != goal:
+		var route := Nav.request_path(s, entity.cell, goal)
+		npc.path = route.path if route.ok else []
+		npc.path_tick = s.tick
+		npc.path_goal = goal.duplicate()
+		if not route.ok: entity.cell = goal.duplicate()   # no way round: they get there anyway (camp ground)
+	if not npc.path.is_empty():
+		var next: Array = npc.path.pop_front()
+		if World.walkable(s, next): entity.cell = next
 
 static func _notices(s: Dictionary, able: Array, player: Array, from_camp: int) -> bool:
 	if from_camp > NOTICE_RANGE: return false
@@ -217,6 +300,7 @@ static func _notices(s: Dictionary, able: Array, player: Array, from_camp: int) 
 
 static func _wake_all(s: Dictionary, able: Array) -> void:
 	for npc in able:
+		_sit_up(npc)
 		if not npc.get("sleeping", {}).is_empty():
 			npc.sleeping = {}
 
@@ -264,7 +348,11 @@ static func _start_fight(sim: RefCounted, able: Array) -> void:
 	s.bandits.phase = "fight"
 	s.bandits.since = s.tick
 	_say(sim, _leader(s, able), "fight")
-	for npc in able: npc.status = "Fighting you"
+	var player: Array = s.entities[str(s.player)].cell
+	var Gunfire = load("res://sim/combat/gunfire.gd")
+	for npc in able:
+		npc.status = "Diving for cover"
+		npc.fight_cover = Gunfire.find_cover(s, s.entities[str(npc.id)].cell, player)   # behind a tree or a rock; [] if none
 	s.player_control.notice = "The bandits open fire! Surrender (F) to give up."
 
 ## Fighting: each bandit closes to rifle range and shoots. You give up (surrender) or go down:
@@ -291,10 +379,22 @@ static func _fight(sim: RefCounted, able: Array, player: Array, from_camp: int) 
 		if not npc.get("brawl", {}).is_empty(): continue   # in a fistfight with you (brawl.gd)
 		var at: Array = s.entities[str(npc.id)].cell
 		var gap: float = Vector2(player[0] - at[0], player[1] - at[1]).length()
+		var cover: Array = npc.get("fight_cover", [])
+		if not cover.is_empty() and at != cover:
+			# Running for cover first.
+			if _turn(s, npc, 1): _walk(s, npc, cover)
+			npc.status = "Diving for cover"
+			continue
 		if gap > SHOOT_RANGE - 2:
-			if s.tick % 4 == int(npc.id) % 4: _step(s, npc, player)
+			# Out of range: on to cover nearer the gunman, or straight at him.
+			if s.tick - int(npc.get("cover_tick", -1000)) > 120:
+				npc.cover_tick = s.tick
+				npc.fight_cover = Gunfire.next_cover(s, at, player)
+			if npc.get("fight_cover", []).is_empty() and _turn(s, npc, 2): _step(s, npc, player)
+			npc.status = "Closing in"
 		elif s.tick >= int(npc.get("next_shot", 0)):
 			npc.next_shot = s.tick + SHOT_EVERY + sim.random_int("bandits", 0, 20)
+			npc.status = "Shooting from cover" if not cover.is_empty() else "Shooting"
 			Gunfire.fire_at_player(sim, npc, at, true)
 
 static func _step(s: Dictionary, npc: Dictionary, goal: Array) -> void:
@@ -316,6 +416,8 @@ static func _home(sim: RefCounted, phase: String) -> void:
 	for i in range(members.size()):
 		var npc: Dictionary = members[i]
 		npc.path = []
+		npc.erase("fight_cover")
+		_sit_up(npc)
 		if _able(s, npc):
 			s.entities[str(npc.id)].cell = _seat(s.bandits.cell, i)
 			npc.status = "Lounging by the fire"

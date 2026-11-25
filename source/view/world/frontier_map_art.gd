@@ -493,40 +493,98 @@ static func construction(c: Node2D, entity: Dictionary, site: Dictionary, rect: 
 		box(c, Rect2(door + Vector2(4, 0), Vector2(16, 6)), Color("d2b47e"), 1)
 	c.draw_rect(rect, Color("dfc58f", 0.55), false, 1)
 
-## The bandits' camp: three patched canvas tents behind a ring-stone campfire with log seats.
-## `p` is the fire. The tents stand behind where the bandits sleep (bandits.gd _bed).
+## The bandits' camp, around the fire at `p` (the layout is bandits.gd's: TENTS, SEATS, POT,
+## WOODPILE, POST). Three big canvas tents, each open at the front with a bedroll inside where its
+## bandit sleeps; log seats; a tripod and pot over the fire; a woodpile; the post for a captive.
+## The flames themselves are drawn moving every frame (campfire_flames).
 static func bandit_camp(c: Node2D, p: Vector2) -> void:
-	for tent in [Vector2(-3, -3.1), Vector2(0, -4.1), Vector2(3, -4.1)]:
-		var t: Vector2 = p + tent * 24.0
-		Props.ellipse(c, t + Vector2(0, 14), Vector2(30, 8), Color(0, 0, 0, 0.18), 0, INK, 0)
-		var canvas := Color("b9a47c") if int(tent.x) % 2 == 0 else Color("a8916a")
-		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-28, 14), t + Vector2(0, -22), t + Vector2(28, 14)]), canvas)
-		c.draw_colored_polygon(PackedVector2Array([t + Vector2(0, -22), t + Vector2(28, 14), t + Vector2(8, 14)]), canvas.darkened(0.18))
-		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-7, 14), t + Vector2(0, -6), t + Vector2(7, 14)]), Color("3a2c20"))
-		c.draw_polyline(PackedVector2Array([t + Vector2(-28, 14), t + Vector2(0, -22), t + Vector2(28, 14)]), INK, 1.2, true)
-		c.draw_rect(Rect2(t + Vector2(-12, -6), Vector2(8, 6)), Color("8c7a5a"))   # a patch
-		c.draw_line(t + Vector2(0, -22), t + Vector2(0, -28), Color("5c4630"), 2.0)
-	# Log seats around the fire.
-	for seat in [Vector2(-48, 22), Vector2(48, 22), Vector2(0, 46)]:
-		var a: Vector2 = p + seat + Vector2(-12, 0)
-		var b: Vector2 = p + seat + Vector2(12, -1)
-		c.draw_line(a, b, Color("6e4a2c"), 8.0, true)
-		c.draw_line(a + Vector2(0, -2), b + Vector2(0, -2), Color("8c6340"), 3.0, true)
-		c.draw_circle(b, 4.0, Color("c9a06a"))
-	# Fire: a ring of stones, charred logs, flames and a little smoke.
-	for i in range(9):
-		var a: float = float(i) / 9.0 * TAU
-		Props.ellipse(c, p + Vector2(cos(a) * 14, sin(a) * 8 + 6), Vector2(4.5, 3.2), Color("85827a"), 0, INK, 0.6)
-	c.draw_line(p + Vector2(-9, 8), p + Vector2(9, 3), Color("3b2a1c"), 4.0, true)
-	c.draw_line(p + Vector2(-8, 3), p + Vector2(8, 9), Color("4a3422"), 4.0, true)
-	c.draw_colored_polygon(PackedVector2Array([p + Vector2(-8, 6), p + Vector2(-3, -10), p + Vector2(0, -2), p + Vector2(4, -14), p + Vector2(8, 6)]), Color(0.95, 0.52, 0.16, 0.95))
-	c.draw_colored_polygon(PackedVector2Array([p + Vector2(-4, 6), p + Vector2(0, -6), p + Vector2(4, 6)]), Color(1.0, 0.85, 0.4, 0.95))
-	for i in range(3):
-		c.draw_circle(p + Vector2(3 + i * 2, -20 - i * 9), 4.0 + i * 2.5, Color(0.6, 0.6, 0.6, 0.22 - i * 0.05))
+	var Bandits = load("res://sim/factions/bandits.gd")
+	for i in range(Bandits.TENTS.size()):
+		var t: Vector2 = p + Vector2(Bandits.TENTS[i][0], Bandits.TENTS[i][1]) * 24.0
+		var canvas: Color = [Color("b9a47c"), Color("a8916a"), Color("b3a07a")][i % 3]
+		var back := t + Vector2(0, -34)
+		Props.ellipse(c, t + Vector2(0, 16), Vector2(46, 12), Color(0, 0, 0, 0.18), 0, INK, 0)
+		# The dark inside and the groundsheet, then the two sloping sides and the ridge.
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-34, 16), back + Vector2(-26, 0), back + Vector2(26, 0), t + Vector2(34, 16)]), Color("2e241a"))
+		c.draw_rect(Rect2(t + Vector2(-22, -14), Vector2(44, 28)), Color("4a3a28"))
+		c.draw_rect(Rect2(t + Vector2(-14, -8), Vector2(28, 18)), Color("6d5a3c"))                     # bedroll
+		c.draw_rect(Rect2(t + Vector2(-14, -8), Vector2(9, 18)), Color("8a7653"))                      # rolled blanket end
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-34, 16), back + Vector2(-26, 0), back + Vector2(-4, -18), t + Vector2(-20, 4)]), canvas)
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(34, 16), back + Vector2(26, 0), back + Vector2(4, -18), t + Vector2(20, 4)]), canvas.darkened(0.16))
+		c.draw_colored_polygon(PackedVector2Array([back + Vector2(-4, -18), back + Vector2(4, -18), t + Vector2(20, 4), t + Vector2(-20, 4)]), canvas.darkened(0.32))
+		c.draw_polyline(PackedVector2Array([t + Vector2(-34, 16), back + Vector2(-26, 0), back + Vector2(-4, -18), back + Vector2(4, -18), back + Vector2(26, 0), t + Vector2(34, 16)]), INK, 1.2, true)
+		c.draw_rect(Rect2(t + Vector2(-28, -2), Vector2(9, 7)), canvas.darkened(0.1))              # a patch
+		for pole in [back + Vector2(-4, -18), back + Vector2(4, -18)]:
+			c.draw_line(pole, pole + Vector2(0, -7), Color("5c4630"), 2.0)
+		for peg in [t + Vector2(-38, 18), t + Vector2(38, 18)]:
+			c.draw_line(peg, peg + Vector2(0, -5), Color("5c4630"), 1.5)
+	# Log seats where the bandits sit.
+	for seat in Bandits.SEATS:
+		var s := p + Vector2(seat[0], seat[1]) * 24.0 + Vector2(0, 8)
+		c.draw_line(s + Vector2(-11, 0), s + Vector2(11, -1), Color("6e4a2c"), 8.0, true)
+		c.draw_line(s + Vector2(-11, -2), s + Vector2(11, -3), Color("8c6340"), 3.0, true)
+		c.draw_circle(s + Vector2(11, -1), 4.0, Color("c9a06a"))
+	# Crates and rocks (cover in a fight).
+	for crate in Bandits.PROPS.crate:
+		var q := p + Vector2(crate[0], crate[1]) * 24.0
+		Props.ellipse(c, q + Vector2(0, 10), Vector2(13, 4), Color(0, 0, 0, 0.18), 0, INK, 0)
+		c.draw_rect(Rect2(q + Vector2(-11, -12), Vector2(22, 20)), Color("8a6a42"))
+		c.draw_rect(Rect2(q + Vector2(-11, -12), Vector2(22, 20)), INK, false, 1.2)
+		c.draw_line(q + Vector2(-11, -12), q + Vector2(11, 8), Color("6a4f30"), 1.5)
+		c.draw_line(q + Vector2(-11, -2), q + Vector2(11, -2), Color("6a4f30"), 1.2)
+	for rock_at in Bandits.PROPS.rock:
+		rock(c, p + Vector2(rock_at[0], rock_at[1]) * 24.0)
+	# The woodpile.
+	var pile := p + Vector2(9.5, 2.0) * 24.0
+	for row in range(3):
+		for n in range(4 - row):
+			var q := pile + Vector2(-14 + n * 9 + row * 4.5, 6 - row * 6)
+			c.draw_circle(q, 4.2, Color("6e4a2c"))
+			c.draw_circle(q, 2.6, Color("c9a06a"))
+	# The fire's stone ring and logs (the flames move: campfire_flames).
+	for i in range(10):
+		var a: float = float(i) / 10.0 * TAU
+		Props.ellipse(c, p + Vector2(cos(a) * 15, sin(a) * 8.5 + 6), Vector2(4.6, 3.2), Color("85827a"), 0, INK, 0.6)
+	c.draw_line(p + Vector2(-10, 9), p + Vector2(10, 3), Color("3b2a1c"), 4.5, true)
+	c.draw_line(p + Vector2(-9, 3), p + Vector2(9, 10), Color("4a3422"), 4.5, true)
+	# Tripod and pot by the fire.
+	var pot := p + Vector2(Bandits.POT[0], Bandits.POT[1]) * 24.0
+	for leg in [Vector2(-10, 12), Vector2(10, 12), Vector2(0, 4)]:
+		c.draw_line(pot + Vector2(0, -22), pot + leg, Color("4a3422"), 2.0, true)
+	c.draw_line(pot + Vector2(0, -22), pot + Vector2(0, -12), Color("3a3a3a"), 1.2)
+	Props.ellipse(c, pot + Vector2(0, -6), Vector2(7, 6), Color("2f2f30"), 0, INK, 0.8)
+	Props.ellipse(c, pot + Vector2(0, -11), Vector2(6, 2), Color("6b5a3e"), 0, INK, 0)   # stew
 	# The post a captive is tied to.
-	var post := p + Vector2(-4, 2) * 24.0
+	var post := p + Vector2(Bandits.POST[0], Bandits.POST[1]) * 24.0
 	c.draw_line(post + Vector2(0, 4), post + Vector2(0, -34), Color("5c4630"), 5.0, true)
 	c.draw_line(post + Vector2(-3, -14), post + Vector2(3, -12), Color("c9b48a"), 2.0, true)
+
+## A living campfire at `p` at time `t` (seconds): tongues of flame that lick up and sway, a hot
+## core, embers, sparks that drift up and fade, and a thread of smoke.
+static func campfire_flames(c: Node2D, p: Vector2, t: float) -> void:
+	var base := p + Vector2(0, 5)
+	c.draw_circle(base + Vector2(0, 1), 10.0, Color(1.0, 0.45, 0.1, 0.22 + 0.06 * sin(t * 9.0)))   # glow on the logs
+	for i in range(7):
+		var phase: float = t * (5.0 + float(i) * 0.9) + float(i) * 1.7
+		var sway: float = sin(phase) * 2.2 + sin(t * 3.1 + float(i)) * 1.2
+		var height: float = 14.0 + 7.0 * (0.5 + 0.5 * sin(phase * 1.3)) * (1.0 - absf(float(i) - 3.0) / 4.5)
+		var x: float = (float(i) - 3.0) * 2.6
+		var w: float = 3.2 + 1.2 * sin(phase * 0.7)
+		var tip := base + Vector2(x + sway, -height)
+		var outer := Color(0.95, 0.42 + 0.1 * sin(phase), 0.1, 0.9)
+		c.draw_colored_polygon(PackedVector2Array([base + Vector2(x - w, 0), base + Vector2(x - w * 0.6, -height * 0.45) + Vector2(sway * 0.4, 0), tip, base + Vector2(x + w * 0.6, -height * 0.45) + Vector2(sway * 0.4, 0), base + Vector2(x + w, 0)]), outer)
+	for i in range(4):
+		var phase2: float = t * 7.0 + float(i) * 2.3
+		var h: float = 7.0 + 4.0 * (0.5 + 0.5 * sin(phase2))
+		var x2: float = (float(i) - 1.5) * 2.4 + sin(phase2) * 1.2
+		c.draw_colored_polygon(PackedVector2Array([base + Vector2(x2 - 2.2, 0), base + Vector2(x2, -h), base + Vector2(x2 + 2.2, 0)]), Color(1.0, 0.86, 0.38, 0.95))
+	for i in range(6):
+		var life: float = fmod(t * 0.55 + float(i) / 6.0, 1.0)
+		var spark := base + Vector2(sin(float(i) * 2.1 + t * 1.3) * (3.0 + life * 7.0), -10.0 - life * 34.0)
+		c.draw_circle(spark, 0.9, Color(1.0, 0.75, 0.3, 1.0 - life))
+	for i in range(4):
+		var age: float = fmod(t * 0.18 + float(i) / 4.0, 1.0)
+		c.draw_circle(base + Vector2(4.0 + age * 10.0 + sin(t + float(i)) * 2.0, -24.0 - age * 40.0), 3.0 + age * 6.0, Color(0.55, 0.55, 0.55, 0.22 * (1.0 - age)))
 
 ## A street lamp: a tall iron post with a glass lantern box on top. The light pool itself comes
 ## from the night layer, so the drawing is the same by day and by night.

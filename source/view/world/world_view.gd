@@ -492,6 +492,14 @@ func _rebuild_depth_index(s: Dictionary) -> void:
 			depth_index[bucket].append(["tree:%d" % entity.id, "tree", Vector2(cell) * CELL, int(entity.id)])
 		elif kind in ["stash", "caravan"] and entity.has("cell"):
 			mover_ids.append(int(entity.id))
+	# The bandit camp's crates and woodpile are blocked cells (cover), drawn by the camp art.
+	var camp_props: Dictionary = {}
+	if s.has("bandits"):
+		var Bandits = load("res://sim/factions/bandits.gd")
+		for kind in ["crate", "woodpile"]:
+			for offset in Bandits.PROPS[kind]:
+				var at: Array = Bandits.at_camp(s.bandits.cell, offset)
+				camp_props["%d,%d" % [at[0], at[1]]] = true
 	for cell_key in s.world.blocked:
 		var comma: int = cell_key.find(",")
 		var x: int = int(cell_key.substr(0, comma))
@@ -500,6 +508,7 @@ func _rebuild_depth_index(s: Dictionary) -> void:
 		for rr in big_rocks:
 			if x >= rr[0] and x < rr[0] + rr[2] and y >= rr[1] and y < rr[1] + rr[3]: under_big_rock = true; break
 		if under_big_rock: continue  # drawn once as the large boulder
+		if camp_props.has(cell_key): continue   # the bandit camp's crates and woodpile have their own art
 		var bucket := _depth_chunk(x, y)
 		if not depth_index.has(bucket): depth_index[bucket] = []
 		depth_index[bucket].append(["rock:" + cell_key, "rock", Vector2(x, y) * CELL, 0])
@@ -778,6 +787,11 @@ func _draw_world() -> void:
 	_draw_shotgun(s)
 	_draw_brawl(s)
 	t = _lap("dw:combat+blood", t)
+	# Campfires burn and flicker every frame (the stone ring and logs are in the background).
+	if not is_far():
+		for camp in World.of_kind(s, "bandit_camp"):
+			var fire_at := Vector2(camp.cell[0], camp.cell[1]) * CELL
+			if bounds.has_point(fire_at): MapArt.campfire_flames(self, fire_at, atmosphere_time)
 	_draw_travel_goal(s)
 	_draw_map_labels(s)
 	_lap("dw:labels+weather", t)

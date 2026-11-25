@@ -105,7 +105,7 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		return result
 	# Sitting in a chair (the sheriff at his desk, the governor, drinkers) or on the ground (bandits).
 	if not npc.is_empty() and not npc.get("sitting", {}).is_empty() and npc.get("sleeping", {}).is_empty():
-		result.action = "sit"
+		result.action = "cook" if bool(npc.get("cooking", false)) else "sit"
 		result.face = npc.sitting.get("face", [0, 1])
 		result.sit_ground = bool(npc.sitting.get("ground", false))
 		return result
@@ -417,7 +417,7 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		var look: Vector2 = motion if pose.moving else Vector2.ZERO
 		if action in ["build", "drop"] and not state_action.target_cell.is_empty() and not pose.moving:
 			look = Vector2(state_action.target_cell[0] - entity.cell[0], state_action.target_cell[1] - entity.cell[1])
-		if action == "sit":
+		if action in ["sit", "cook"]:
 			var face: Array = state_action.get("face", [0, 1])
 			look = Vector2(float(face[0]), float(face[1]))
 		if action in ["aim", "shoot", "reload", "melee", "hit", "combat_idle", "chop", "saw", "harvest", "pickup", "punch", "shove", "kick", "mine", "cuff", "pin", "lift", "search", "gun_carry"] and s.entities.has(str(state_action.target)):
@@ -499,7 +499,7 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		# An armed upper-body pose can play over the walking or running legs.
 		var lawman_armed: bool = str(s.get("residents", {}).get(key, {}).get("arrest", {}).get("phase", "")) in ["standoff", "approach", "engage", "backup", "assist"]
 		var gun_pose := (gun_equipped or lawman_armed) and action in ["gun_carry", "aim", "reload", "shoot"]
-		if pose.moving and not gun_pose and action not in ["punch", "shove", "kick", "hit", "stagger", "down", "fall", "getup", "rest", "cuffed", "escort", "surrender", "cuff", "pin", "lift", "search", "crawl", "sit", "tied"]:
+		if pose.moving and not gun_pose and action not in ["punch", "shove", "kick", "hit", "stagger", "down", "fall", "getup", "rest", "cuffed", "escort", "surrender", "cuff", "pin", "lift", "search", "crawl", "sit", "cook", "tied"]:
 			action = "run" if sprinting else ("carry" if quantity > 0 else "walk")
 		elif entity.kind == "player" and player_ready and action == "idle":
 			action = "ready"
@@ -581,7 +581,7 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		pose.treat_kind = state_action.get("treat_kind", "")
 		pose.fall_style = state_action.get("style", "back")
 		pose.rest_rot = state_action.get("rest_rot", -1)
-		pose.sit_ground = bool(state_action.get("sit_ground", false)) or action == "tied"
+		pose.sit_ground = bool(state_action.get("sit_ground", false)) or action in ["tied", "cook"]
 		pose.fall_side = state_action.get("side", 1)
 		pose.expected_quantity = state_action.expected_quantity
 		if action in ["chop", "mine", "saw", "harvest"] and not paused and not first:

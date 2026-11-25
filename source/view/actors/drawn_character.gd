@@ -663,8 +663,8 @@ func _build_frame() -> Dictionary:
 		head += _joint(0, 0, -dip)
 	# Sitting: in a chair (hips at seat height, thighs forward, shins down, hands in the lap) or on
 	# the ground (knees up). Tied: on the ground, arms bound behind the back.
-	if action in ["sit", "tied"]:
-		var ground: bool = action == "tied" or bool(pose.get("sit_ground", false))
+	if action in ["sit", "tied", "cook"]:
+		var ground: bool = action in ["tied", "cook"] or bool(pose.get("sit_ground", false))
 		var seat: float = 4.0 if ground else 13.0
 		var breathe: float = sin((float(pose.get("age", 0.0)) + float(posmod(actor_id, 17)) * 0.7) * TAU / 3.6) * 0.6
 		hip = _joint(0, -1.0, seat)
@@ -682,6 +682,11 @@ func _build_frame() -> Dictionary:
 			if action == "tied":
 				elbow = shoulder + _joint(side * 5.0, -3.5, -8.0)
 				hand = hip + _joint(side * 1.4, -5.0, 5.0)
+			elif action == "cook" and side > 0:
+				# Stirring the pot: the right hand reaches forward and circles.
+				var stir: float = float(pose.get("age", 0.0)) * TAU * 0.7
+				hand = chest + _joint(4.0 + cos(stir) * 2.5, 15.0 + sin(stir) * 2.5, -16.0)
+				elbow = shoulder.lerp(hand, 0.5) + _joint(side * 3.0, 0, -4.0)
 			else:
 				elbow = shoulder + _joint(side * 4.5, 3.5, -8.5)
 				hand = knee_at.lerp(hip, 0.45) + _joint(side * -1.0, 0, 3.0)

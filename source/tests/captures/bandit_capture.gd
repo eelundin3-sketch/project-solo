@@ -7,7 +7,7 @@ func shot(main: Node, name: String) -> void:
 	var camp: Array = s.bandits.cell
 	var camera = main.get_node("ObserverCamera")
 	camera.position = Vector2(camp[0], camp[1] - 1) * 24
-	camera.zoom = Vector2.ONE * 1.6
+	camera.zoom = Vector2.ONE * 1.3
 	main.refresh_view()
 	main.get_node("WorldView").snap_visuals()
 	for i in range(12):
@@ -25,10 +25,10 @@ func run() -> void:
 	main.follow_player = false
 	var sim = main.simulation
 	var s: Dictionary = sim.state
-	s.tick = 14400 + 600 * 15
-	for i in range(20): sim.step()
+	s.tick = 14400 + 600 * 15 - 300
+	for i in range(300): sim.step()
 	await shot(main, "bandits-day")
-	s.tick = 14400 * 2 + 600 * 23
-	for i in range(40): sim.step()
+	s.tick = 14400 * 2 + 600 * 23 - 300
+	for i in range(300): sim.step()
 	await shot(main, "bandits-night")
 	quit()
