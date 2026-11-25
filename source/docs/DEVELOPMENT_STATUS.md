@@ -73,12 +73,21 @@ Big-push order when the owner asks: **PR #13 first**, then the feature branches 
 | **Poses**: sitting (desk, saloon, campfire), tied with ropes, backpedal and strafe legs, an arrest from the ground (held down, then hauled up) | `animation_director.gd`, `drawn_character.gd`, `law.gd` | `poses_test`, `law_test`, `poses_capture` |
 | **A living bandit camp**: big tents they sleep in, sit/cook/fetch wood/keep watch, cover in a fight, an animated fire | `sim/factions/bandits.gd`, `frontier_map_art.gd` | `bandit_camp_test`, `bandit_capture` |
 | **Roofs** on every building except the one you're in; people indoors hidden; zoomed out: roofs only, no "YOU" marker or name tags | `view/world/roofs.gd`, `world_view.gd` | `roofs_test`, `roofs_capture` |
+| **Bandits look like outlaws** (duster, black hat, bandana; leader in a long coat); guns pointed at you while sheriffs and bandits move in | `outfits.gd`, `drawn_character.gd`, `animation_director.gd` | `poses_test` |
+| **Bandits fight like the sheriffs**: one shared cover cycle (`gunfire.gd fight_cycle`), positions (front, flank, camp), 5-round reloads, morale (give up or run) | `sim/factions/bandits.gd`, `sim/combat/gunfire.gd` | `bandit_fight_test` |
+| **Hold-up and captivity**: guards on both sides, a spoken countdown, walked to the post, a night watch in shifts, F works the ropes, the loot pile guarded | `bandits.gd` | `bandit_captive_test` |
+| **Bandits in town get arrested**: supply runs every third day, sightings, two sheriffs, surrender or a shootout between people, three days in the cell | `sim/law/outlaw_arrest.gd` | `outlaw_arrest_test` |
+| **Townsfolk react by temperament** (confront then fetch the sheriff, fight, flee); a witness reports a shooting once it's quiet | `brawl.gd`, `fear.gd`, `witness_reports.gd` | `civilian_reactions_test` |
+| **Wanted and remembered**: townsfolk know you, shops refuse or charge double, sightings, fines, turning yourself in, HUD line, journal, notice by the office | `sim/law/notoriety.gd` | `wanted_memory_test`, `wanted_capture` |
+| **Smarter conversations**: openers from memories, real news told once with follow-ups, introductions, sheriff/barkeep/Governor/bandit/watch/prisoner topics, amends, paged options | `sim/player/conversation.gd` | `smart_talk_test` |
+| **Missing people and investigations**: missed after an hour, house then search, body examined (cause of death), witnesses asked, filed / suspect / open, laid to rest | `sim/law/investigation.gd` | `investigation_test` |
+| **Bounties and prisoners; the gang grows back** (newcomers up to five, beaten leave, a new gang a season after clearing) | `sim/law/bounties.gd`, `bandits.gd` | `bandit_bounty_test` |
 
 ## 3. Partly implemented (exact gaps)
 
 | Feature | What exists | What is missing |
 |---|---|---|
-| Unseen crimes | murder/theft nobody saw go to `s.law.hidden` (`witness_reports.gd`) | **Nothing ever reads `s.law.hidden`.** A found body records a `body_found` chronicle entry and a spoken line (`carrying.gd` `_find_bodies`) but does not alert the law or file the crime. Intended: a found body or a missing-goods discovery should surface the crime |
+| Unseen crimes | killings: missed, searched for, investigated (`investigation.gd`) | thefts nobody saw stay in `s.law.hidden` unread; no footprints or spent shells as clues yet |
 | Wanted posters | wanted records store the clothes witnesses described (`law.wanted[town].outfit`) | no notice board fixture, no poster art (planned with town laws, ROADMAP milestone 6) |
 | Save slots | autosave, Continue, F9 | named manual slots; needs a pause menu that does not exist (milestone 9) |
 | Favours | deliver and supply requests | courier ("carry this letter") and "find someone" kinds |
@@ -98,7 +107,7 @@ Everything in `docs/ROADMAP.md` milestones 5-14 (night lighting, per-town weathe
 
 ## 5. Known problems and technical debt
 
-1. **Hidden crimes never resolve** (section 3).
+1. **Hidden crimes, partly resolved (2026-11-25):** an unwitnessed killing is now found through a missing-person report or a body, and investigated (`investigation.gd`). Unwitnessed thefts in `s.law.hidden` are still never read.
 2. **Render error at launch (fixed 2026-11-25):** `Invalid polygon data, triangulation failed` came from shapes that cannot be filled (fallen logs, blood stains); `prop_art.gd` `fillable` now checks first and those are outlined or drawn as ovals.
 3. **678 untracked Finder duplicate files** ("name 2.gd", "Project Solo 2.app", ...) litter the working folder. They are not in git and `check_layout.py` fails on any that get tracked. **Never run `git add -A` or `git add .`; add files by name.** A `.gitignore` rule for them has not been added.
 4. **Godot exists only at `/private/tmp/living-world-engine/Godot.app`** (4.6 stable). A reboot or temp cleanup can remove it; `/Applications/Godot.app` is not installed. The launcher `Project Solo.app` looks in `/Applications` first. Moving it is an open task.

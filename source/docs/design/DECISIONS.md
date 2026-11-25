@@ -650,3 +650,53 @@ noon zoom 2 76.5 -> 72.6 (-5%), zoom 1 50.5 -> 53.5, zoom 0.5 35.6 -> 39.0, far 
 middle zooms faster (no floors, no people indoors). The machine ran slower overall than in the
 earlier records. Worst simulation tick after warm-up 14.3 ms (budget 15). All 91 tests pass.
 Records: docs/validation/view_benchmark_{before,after}_fights_{12,23}.json.
+
+## 2026-11-25: Bandits, outlaws in town, temperaments, wanted, conversations, investigations [owner]
+
+**One fight engine.** `gunfire.gd` `fight_cycle` (hide, peek, fire, reload, advance, flank,
+bandage) is shared by sheriffs and bandits through a "squad" record (who flanks, who moves, last
+shot). Bandits get roles at the start of a fight (front, flank, camp), 5 rounds, aim to disable
+until you hurt one; losing the leader or two members breaks them (each gives up or runs).
+`gun_out`/`aim_at` on any resident draws the gun aimed at a target; sheriffs walking up to you now
+aim instead of carrying the gun low.
+
+**Hold-up and captivity.** Guards cover you from both sides; a countdown at 50/100/125 ticks; the
+captive is fetched, hauled up (LIFT 40 ticks) and walked to the post a step at a time. One bandit
+keeps watch at night in three-hour shifts, walking a round; F works the ropes (300 ticks) unless the
+watch is within 4 cells; the loot pile is guarded even during the cool-down. Bandits notice less in
+the dark (6 cells) and when you crouch.
+
+**Outlaws in town** (`sim/law/outlaw_arrest.gd`). Supply runs at 09:00 every third day (never the
+leader). Sheriffs who see a bandit move in; townsfolk send a runner (witness report kind
+"outlaw"). Surrender 70% (+10 with two sheriffs; a `stubborn` one always fights). A shootout between
+people uses `Wounds.shoot` on residents. Three days in the cell, then sent back. Sheriffs busy with
+an outlaw (`collar`), a sighting (`search`) or a case (`case`) are skipped by residents.gd and law.gd.
+
+**Temperaments** (`Brawl.temperament`, fixed by id): fighter (30%, +20 in heavy trades), timid (20%),
+confront (the rest: stands up to you for 40 ticks, then reports unless you've backed off 5 cells).
+After a shooting nobody from the law saw, one witness reports "discharge" once it's quiet.
+
+**Wanted** (`sim/law/notoriety.gd`). Townsfolk recognise a wanted player by the sheriffs' rule;
+they mutter, and a "confront" one may report a sighting (a sheriff comes looking, 1200 ticks).
+Non-timid shopkeepers refuse; prices double. Fines (12 coins an hour, only trespass, assault,
+discharge, kick) go to the town purse; turning yourself in halves the hours. Crime chronicle
+entries now store the player's outfit.
+
+**Conversations** (`sim/player/conversation.gd`). Options are built in the simulation; the window
+is unchanged; lists over 7 are paged ("More…", `player_control.talk_page`). News is told once per
+person (`told_you`). Barkeep rumours need the bar open (3 coins). The Governor's pardon (200 coins,
+free after clearing the bandits) clears every town's record. Known places live in
+`player_status.known_places` (the map marks the camp).
+
+**Investigations** (`sim/law/investigation.gd`). Deaths record `died_tick`, `died_at`, `cause`.
+Missed after 600 ticks (1800 for someone alone); the sheriff goes to the house, then searches where
+they were last seen: where they died only if someone was near then, otherwise round the town store
+(so a body hidden out of the way stays hidden). Verdict: witness saw the player (filed by outfit),
+motive in the dead's memories (suspect: the sheriff wants a word; deny or confess), or open. The
+dead are `buried` (no longer drawn). Not built: footprints, spent shells, blood trails as clues.
+
+**Bounties** (`sim/law/bounties.gd`): 40 a head alive, 100 the leader, half dead; paid from the
+town purse (as much as it holds); chronicle "bounty". **Regrowth**: a recruit every 4 days at noon
+(up to 5; tents 4 and 5 at [-9,-1] and [9,-4]); after clearing, the beaten leave the valley
+(`gone`: not drawn or simulated; their goods stay counted); a season later a new camp at least 60
+cells from old ones (`old_camps`), the old camp `abandoned` (no fire).
