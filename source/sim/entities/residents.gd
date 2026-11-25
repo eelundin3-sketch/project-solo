@@ -53,6 +53,7 @@ static func update(sim: RefCounted) -> void:
 		if not npc.get("serving", {}).is_empty(): continue   # minding a market tent for the player (stall_service.gd)
 		if not npc.get("bandaging", {}).is_empty(): continue   # binding a wound (bleeding.gd)
 		if not npc.get("reporting", {}).is_empty(): continue   # running to tell the sheriff (witness_reports.gd)
+		if not npc.get("collar", {}).is_empty() or not npc.get("search", {}).is_empty() or not npc.get("case", {}).is_empty(): continue   # the sheriff on an outlaw, a sighting or a case
 		if not npc.get("arrest", {}).is_empty():
 			if npc.has("sitting"): Sheriff.stand_up(s, npc)
 			continue   # making an arrest (law.gd)

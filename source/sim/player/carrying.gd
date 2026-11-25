@@ -90,3 +90,4 @@ static func _find_bodies(sim: RefCounted) -> void:
 		npc.found = true
 		Chronicle.record(s, "body_found", int(npc.settlement), int(finders[0]), int(npc.id), cell)
 		load("res://sim/law/law.gd")._say(sim, int(finders[0]), "Oh no... %s! Somebody fetch the sheriff!" % String(s.entities[key].name).split(" ")[0])
+		if not bool(npc.get("buried", false)): load("res://sim/law/investigation.gd").body_found(sim, npc, s.residents.get(str(finders[0]), {}))

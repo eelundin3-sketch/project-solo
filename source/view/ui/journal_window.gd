@@ -63,6 +63,12 @@ func rows(s: Dictionary) -> Array:
 				var word: String = "dead" if int(npc.health) <= 0 else ("warm to you" if feeling >= 35 else ("friendly" if feeling >= 15 else ("cold to you" if feeling <= -30 else ("wary" if feeling <= -10 else "neutral"))))
 				result.append([str(person.name), "%s of %s · %s" % [str(npc.occupation), town, word]])
 		"news":
+			# The sheriffs' cases you know of (investigation.gd), then what you've heard.
+			for c in s.get("law", {}).get("cases", []):
+				var who: String = str(s.entities.get(str(c.victim), {}).get("name", "Someone"))
+				var town_name: String = str(s.settlements.get(str(c.town), {}).get("name", ""))
+				var state: String = {"solved": "solved", "outlaw": "closed: an outlaw", "suspect": "the sheriff suspects you", "unsolved": "open, nobody saw anything", "missing": "open: still missing"}.get(str(c.get("outcome", "")), "under investigation")
+				result.append(["Case: %s%s" % [who, (" (%s)" % c.cause) if str(c.get("cause", "")) != "" else ""], "%s · %s" % [town_name, state]])
 			var heard: Array = status.get("heard", [])
 			for index in range(heard.size() - 1, -1, -1):
 				result.append([str(heard[index].text), "Heard from %s, day %d" % [str(heard[index].get("from", "someone")), int(heard[index].tick) / 14400 + 1]])

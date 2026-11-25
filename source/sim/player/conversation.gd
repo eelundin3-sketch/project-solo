@@ -151,6 +151,9 @@ static func options(s: Dictionary, npc: Dictionary) -> Array:
 		result.append(_opt("c_introduce", "I'm %s, by the way." % _player_name(s)))
 	match str(npc.get("occupation", "")):
 		"Sheriff":
+			if not load("res://sim/law/investigation.gd").suspect_case(s, npc).is_empty():
+				result.push_front(_opt("c_confess", "...All right. It was me."))
+				result.push_front(_opt("c_deny", "I had nothing to do with it."))
 			if s.has("bandits") and not bool(s.bandits.get("cleared", false)) and not _knows_camp(s):
 				result.append(_opt("c_camp", "Any trouble out in the wilds?"))
 		"Barkeep":
@@ -196,6 +199,8 @@ static func _reply(sim: RefCounted, npc: Dictionary, id: String) -> String:
 	var pc: Dictionary = s.player_control
 	var Bandits = load("res://sim/factions/bandits.gd")
 	match id:
+		"c_deny", "c_confess":
+			return load("res://sim/law/investigation.gd").answer(sim, npc, id == "c_confess")
 		"c_introduce":
 			npc.knows_name = true
 			Society.remember(s, int(npc.id), "pleasant", int(s.player), "We were introduced.")

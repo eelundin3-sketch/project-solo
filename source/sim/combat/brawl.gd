@@ -441,6 +441,9 @@ static func kill(sim: RefCounted, npc: Dictionary, cause: String) -> void:
 	if npc.job != 0: Jobs.release(s, npc.job, "DIED")
 	npc.health = 0
 	npc.dead = true
+	npc.died_tick = s.tick                              # for the investigation (investigation.gd)
+	npc.died_at = s.entities[str(npc.id)].cell.duplicate()
+	npc.cause = cause
 	npc.knock = {}
 	npc.brawl = {}
 	npc.attack = {}

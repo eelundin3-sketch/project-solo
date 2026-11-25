@@ -94,7 +94,7 @@ const MEMORY_OF := {"trespass": "insulted", "theft": "robbed", "assault": "assau
 static func remember_crime(s: Dictionary, town: int, kind: String, victim: int) -> Dictionary:
 	if not s.has("player") or not s.entities.has(str(s.player)): return {}
 	var cell: Array = s.entities[str(victim)].cell if s.entities.has(str(victim)) else s.entities[str(s.player)].cell
-	var entry: Dictionary = load("res://sim/world/chronicle.gd").record(s, kind, town, int(s.player), victim, cell)
+	var entry: Dictionary = load("res://sim/world/chronicle.gd").record(s, kind, town, int(s.player), victim, cell, {"outfit": load("res://sim/entities/outfits.gd").worn(s, int(s.player)).duplicate()})
 	if s.has("factions"):
 		var victim_name: String = str(s.entities.get(str(victim), {}).get("name", "someone"))
 		var text: String = "The stranger %s %s." % [{"theft": "robbed", "murder": "killed", "shooting": "shot at"}.get(kind, "attacked"), victim_name] if victim != 0 else "The stranger fired a gun in town."

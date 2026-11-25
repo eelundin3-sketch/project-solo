@@ -658,7 +658,8 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 static func _actor_keys(s: Dictionary) -> Array:
 	var keys: Array = []
 	if s.has("player"): keys.append(str(s.player))
-	keys.append_array(s.get("residents", {}).keys())
+	for key in s.get("residents", {}).keys():
+		if not bool(s.residents[key].get("buried", false)): keys.append(key)   # the dead, once laid to rest, are gone
 	for key in s.get("local_combat", {}).get("fighters", {}):
 		if not s.get("residents", {}).has(key): keys.append(key)
 	return keys
