@@ -376,6 +376,21 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		var run_tick: int = s.get("player_control", {}).get("running_tick", -100) if entity.kind == "player" else int(s.get("residents", {}).get(key, {}).get("running_tick", -100))
 		var sprinting: bool = (entity.kind == "player" and run_tick > 0 and run_tick >= s.tick - 1) or (s.get("residents", {}).has(key) and run_tick > 0 and run_tick >= s.tick - 2)
 		var jumped: bool = before.distance_to(target) > CELL * 8
+		# Each person's own step rate (ticks per cell, smoothed over the last few steps): the figure
+		# walks at exactly that pace, so it reaches each cell as the next step begins instead of
+		# arriving early and standing still between steps (which read as bumpy, stop-start walking).
+		var cell_was: Array = pose.get("cell_was", [])
+		if cell_was != entity.cell:
+			if not cell_was.is_empty() and not jumped:
+				var gap_ticks: int = s.tick - int(pose.get("step_tick", s.tick))
+				var cells: float = Vector2(entity.cell[0] - cell_was[0], entity.cell[1] - cell_was[1]).length()
+				if gap_ticks >= 1 and gap_ticks <= 14 and cells > 0.5 and cells < 1.6:
+					var per_cell: float = float(gap_ticks) / cells
+					pose.step_ticks = per_cell if not pose.has("step_ticks") else lerpf(float(pose.step_ticks), per_cell, 0.65)
+			pose.step_tick = s.tick
+			pose.cell_was = entity.cell.duplicate()
+		var cadence: float = float(pose.get("step_ticks", 0.0))
+		var stepping: bool = entity.kind != "player" and cadence > 0.0 and s.tick - int(pose.get("step_tick", -1000)) <= ceili(cadence) + 1   # the player keeps the pace tuned to the input queue
 		if jumped:
 			pose.position = target
 		elif not paused:
@@ -391,7 +406,9 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 			var walk_pace: float = 5.0
 			if entity.kind == "player":
 				walk_pace *= lerpf(1.0, 0.667, clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0)) * (1.0 + float(Pace.bonus(s, entity.cell)) / 100.0)
-			var follow: float = CELL * dt * lerpf(walk_pace, 10.0, float(pose.get("run_blend", 0.0))) + maxf(0.0, before.distance_to(target) - CELL * 1.05) * dt / 0.1
+			var pace: float = lerpf(walk_pace, 10.0, float(pose.get("run_blend", 0.0)))
+			if stepping: pace = clampf(9.6 / cadence, 1.2, 12.0)   # cells per second at their own step rate (a hair under, so they never arrive early and stop)
+			var follow: float = CELL * dt * pace + maxf(0.0, before.distance_to(target) - CELL * 1.05) * dt / 0.1
 			if on_trip: follow = maxf(follow, before.distance_to(target))   # the schedule is exact: keep to it
 			# Someone knocked off their feet is thrown, not walked: settle the body fast instead of
 			# letting it slide on at walking pace while it falls.
@@ -409,6 +426,9 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 			jumped=true
 		var motion: Vector2 = pose.position - before
 		pose.moving = motion.length() > 0.01 and not jumped
+		# Between two steps of a steady walk the figure keeps walking (it doesn't drop to idle for the
+		# instant it waits on the next step).
+		if not pose.moving and not jumped and stepping and not paused: pose.moving = true
 		# Carried over someone's shoulder: drawn up at shoulder height (carrying.gd).
 		var shoulder: float = -20.0 if s.get("residents", {}).get(key, {}).has("carried_by") else 0.0
 		pose.shoulder = shoulder
