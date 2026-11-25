@@ -29,7 +29,7 @@ static func options(s: Dictionary, target: int) -> Array:
 	var Talk = load("res://sim/player/talk.gd")
 	var trouble: Array = Talk.trouble_options(s, npc)
 	if not trouble.is_empty(): return trouble
-	var result: Array = load("res://sim/player/requests.gd").talk_options(s, npc)
+	var result: Array = Talk.wanted_options(s, npc) + load("res://sim/player/requests.gd").talk_options(s, npc)
 	result += [
 		{"id": "ask_work", "label": "What do you do for a living?", "enabled": true, "reason": ""},
 		{"id": "ask_family", "label": "How is your family keeping?", "enabled": true, "reason": ""},

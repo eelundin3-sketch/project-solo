@@ -249,6 +249,9 @@ static func update(sim: RefCounted) -> void:
 				npc.status = "Holding the traveller at gunpoint"
 				_say(sim, npc.id, "Hands up! You're wanted for %s!" % CRIME_NAMES.get(str(_law(s).wanted[str(npc.settlement)].crimes[-1]), "your crimes"))
 				pc.notice = "%s draws his gun on you. Press F to surrender, or run." % s.entities[key].name
+				npc.search = {}
+			elif not npc.get("search", {}).is_empty():
+				load("res://sim/law/notoriety.gd").search(s, npc)   # told you were seen: he comes looking
 			continue
 		match str(arrest.phase):
 			"engage": load("res://sim/combat/gunfire.gd").engage(sim, npc, arrest, cell, player, gap)

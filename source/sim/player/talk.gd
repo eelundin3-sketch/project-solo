@@ -71,6 +71,18 @@ static func say(sim: RefCounted, npc: Dictionary, tone: String) -> String:
 static func arresting_sheriff(s: Dictionary, npc: Dictionary) -> bool:
 	return npc.get("occupation", "") == "Sheriff" and str(npc.get("arrest", {}).get("phase", "")) in ["standoff", "approach", "pursue"]
 
+## Wanted in his town and talking to a sheriff (not at gunpoint): turn yourself in, or pay a fine.
+static func wanted_options(s: Dictionary, npc: Dictionary) -> Array:
+	if npc.get("occupation", "") != "Sheriff" or arresting_sheriff(s, npc): return []
+	var Law = load("res://sim/law/law.gd")
+	if Law.wanted_hours(s, int(npc.settlement)) <= 0: return []
+	var Notoriety = load("res://sim/law/notoriety.gd")
+	var fine: int = Notoriety.fine(s, int(npc.settlement))
+	var coins: int = int(s.get("accounts", {}).get(str(s.player), 0))
+	return [{"id": "turn_in", "label": "I'd like to turn myself in.", "enabled": true, "reason": ""},
+		{"id": "pay_fine", "label": "I'll pay the fine." if fine <= 0 else "I'll pay the fine (%d coins)." % fine, "enabled": fine > 0 and coins >= fine,
+			"reason": "Too serious for a fine" if fine <= 0 else ("You haven't got %d" % fine if coins < fine else "")}]
+
 static func trouble_options(s: Dictionary, npc: Dictionary) -> Array:
 	if not arresting_sheriff(s, npc): return []
 	var record: Dictionary = s.get("law", {}).get("wanted", {}).get(str(npc.settlement), {})

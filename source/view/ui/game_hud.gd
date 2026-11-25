@@ -4,6 +4,7 @@ signal action(kind: String)
 var heading: Label
 var stats: Label
 var notice: Label
+var wanted_label: Label     # "WANTED IN REEDBANK · assault" while you're in a town that wants you
 var pause_button: Button
 var stamina_bar: ProgressBar
 var sound_button: Button
@@ -77,6 +78,19 @@ func _ready() -> void:
 	notice.offset_left = -360
 	notice.offset_right = 360
 	root.add_child(notice)
+	wanted_label = Label.new()
+	wanted_label.add_theme_font_size_override("font_size", 15)
+	wanted_label.add_theme_color_override("font_color", Color("f0a088"))
+	wanted_label.add_theme_color_override("font_outline_color", Color(0.12, 0.03, 0.02, 0.95))
+	wanted_label.add_theme_constant_override("outline_size", 6)
+	wanted_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wanted_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wanted_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	wanted_label.offset_left = -360
+	wanted_label.offset_right = 360
+	wanted_label.offset_top = 10
+	wanted_label.visible = false
+	root.add_child(wanted_label)
 
 	observer_panel = PanelContainer.new()
 	observer_panel.position = Vector2(84, 130)
@@ -129,6 +143,12 @@ func refresh(sim: RefCounted, clock: RefCounted, _selected: int, frame_ms: float
 	stamina_bar.value = s.get("player_health", {}).get("stamina", 100)
 	stamina_bar.max_value = s.get("player_health", {}).get("stamina_max", 100)
 	if not details_visible: stats.visible = false
+	# Wanted in the town you're standing in.
+	var Notoriety = load("res://sim/law/notoriety.gd")
+	var town: int = Notoriety.town_here(s)
+	var wanted: bool = town != 0 and s.get("law", {}).get("wanted", {}).has(str(town))
+	wanted_label.visible = wanted
+	if wanted: wanted_label.text = "WANTED IN %s · %s" % [str(s.settlements[str(town)].name).to_upper(), Notoriety.crimes_line(s, town)]
 
 func toggle_observer() -> void:
 	observer_panel.visible = not observer_panel.visible

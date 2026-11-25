@@ -245,7 +245,7 @@ static func request(sim: RefCounted, id: int, action: String, part: String = "")
 	if not s.entities.has(str(id)): return
 	var e: Dictionary = s.entities[str(id)]
 	pc.pending = {}
-	var talking_distance: bool = (action in ["ask_family", "ask_news", "ask_work", "talk", "persuade", "ask_help", "accept_request", "hand_over"] or action.begins_with("say_") or action.begins_with("bribe_")) and Actions.distance(s.entities[str(s.player)].cell, e.cell) <= 4
+	var talking_distance: bool = (action in ["ask_family", "ask_news", "ask_work", "talk", "persuade", "ask_help", "accept_request", "hand_over", "turn_in", "pay_fine"] or action.begins_with("say_") or action.begins_with("bribe_")) and Actions.distance(s.entities[str(s.player)].cell, e.cell) <= 4
 	if id == s.player or action in ["examine", "inventory", "health", "wardrobe"] or talking_distance or _within_reach(s, e, part):
 		perform(sim, id, action, part)
 		return
@@ -337,6 +337,12 @@ static func perform(sim: RefCounted, id: int, action: String, part: String = "")
 			else:
 				var answer: String = load("res://sim/player/requests.gd").perform(sim, npc, action)
 				if not answer.is_empty(): pc.notice = answer
+		"turn_in", "pay_fine":
+			var npc: Dictionary = s.residents.get(str(id), {})
+			if npc.is_empty(): return
+			_met(s, id)
+			var Notoriety = load("res://sim/law/notoriety.gd")
+			pc.notice = Notoriety.turn_in(sim, npc) if action == "turn_in" else Notoriety.pay_fine(sim, npc)
 		"takedown_ko", "takedown_kill":
 			var npc: Dictionary = s.residents.get(str(id), {})
 			pc.notice = load("res://sim/combat/takedown.gd").perform(sim, npc, action == "takedown_kill")

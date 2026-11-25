@@ -80,6 +80,11 @@ func rows(s: Dictionary) -> Array:
 			for key in keys:
 				var standing: int = Reputation.value(s, int(key))
 				result.append([str(s.settlements[key].name), "You are %s here (%+d)" % [Reputation.label(standing), standing]])
+			for key in keys:
+				var record: Dictionary = s.get("law", {}).get("wanted", {}).get(key, {})
+				if record.is_empty(): continue
+				var Notoriety = load("res://sim/law/notoriety.gd")
+				result.append(["Wanted in %s" % str(s.settlements[key].name), "%s · %d hours · known by %s" % [Notoriety.crimes_line(s, int(key)), int(record.hours), "face" if bool(record.get("face", false)) else "your clothes"]])
 			var Look = load("res://sim/player/look.gd")
 			result.append(["Your looks", "You look %s." % Look.label(s)])
 			var Encumbrance = load("res://sim/player/encumbrance.gd")

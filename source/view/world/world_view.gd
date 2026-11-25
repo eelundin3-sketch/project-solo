@@ -810,6 +810,7 @@ func _draw_world() -> void:
 			var fire_at := Vector2(camp.cell[0], camp.cell[1]) * CELL
 			if bounds.has_point(fire_at): MapArt.campfire_flames(self, fire_at, atmosphere_time)
 	_draw_travel_goal(s)
+	_draw_wanted_posters(s, bounds)
 	label_layer.queue_redraw()
 	_lap("dw:labels+weather", t)
 
@@ -875,6 +876,31 @@ func _draw_travel_goal(s: Dictionary) -> void:
 
 func atime_for_marker() -> float:
 	return atmosphere_time
+
+## A wanted notice on a board by the door of each office whose town wants you: a sketch of the
+## stranger in the clothes witnesses described (or your face, if a sheriff saw you).
+func _draw_wanted_posters(s: Dictionary, bounds: Rect2) -> void:
+	var wanted: Dictionary = s.get("law", {}).get("wanted", {})
+	if wanted.is_empty() or is_far(): return
+	for office in World.of_kind(s, "office"):
+		var record: Dictionary = wanted.get(str(office.get("settlement", 0)), {})
+		if record.is_empty() or not office.has("door"): continue
+		var at := Vector2(office.door[0] - 2, office.door[1] + 2) * CELL + Vector2(0, 14)
+		if not bounds.has_point(at): continue
+		draw_set_transform(at, 0.0, Vector2(1.7, 1.7))
+		var p := Vector2.ZERO
+		draw_line(p + Vector2(0, 8), p + Vector2(0, -14), Color("5b4029"), 2.5)                 # the post
+		draw_rect(Rect2(p + Vector2(-11, -30), Vector2(22, 26)), Color("6e4f31"))                 # the board
+		draw_rect(Rect2(p + Vector2(-9, -28), Vector2(18, 22)), Color("eadcb4"))                 # the notice
+		draw_string(font, p + Vector2(-10, -22.5), "WANTED", HORIZONTAL_ALIGNMENT_CENTER, 20, 5, Color("5a1f16"))
+		var described: Dictionary = record.get("outfit", {})
+		var hat: Color = load("res://sim/entities/outfits.gd").color(str(described.get("hat", "hat:0")), Color("3a2c22"))
+		var coat: Color = load("res://sim/entities/outfits.gd").color(str(described.get("vest", "vest:0")), Color("6b5a44"))
+		draw_circle(p + Vector2(0, -15), 3.2, Color("c9a982"))                                   # the face
+		draw_rect(Rect2(p + Vector2(-5, -19.5), Vector2(10, 2)), hat)                             # the hat
+		draw_rect(Rect2(p + Vector2(-4.5, -12), Vector2(9, 5)), coat)                             # the coat
+		draw_string(font, p + Vector2(-10, -6.8), "%d COINS" % (int(record.hours) * 10), HORIZONTAL_ALIGNMENT_CENTER, 20, 4, Color("5a1f16"))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## Town names sit on a layer of their own so the roofs never cover them.
 class LabelLayer extends Node2D:

@@ -117,6 +117,11 @@ static func _nearest_sheriff(s: Dictionary, town: int, from: Array) -> Dictionar
 static func _tell(sim: RefCounted, npc: Dictionary, sheriff: Dictionary, report: Dictionary) -> void:
 	var s: Dictionary = sim.state
 	var Law: GDScript = _law()
+	if str(report.kind) == "sighting":
+		Law._say(sim, int(npc.id), "Sheriff! That wanted stranger is in town!")
+		load("res://sim/law/notoriety.gd").sighted(sim, sheriff, report.get("cell", s.entities[str(s.player)].cell))
+		_finish(npc)
+		return
 	if str(report.kind) == "outlaw":
 		Law._say(sim, int(npc.id), "Sheriff! There's one of those bandits in town!")
 		load("res://sim/law/outlaw_arrest.gd").reported(sim, int(report.town), int(report.victim), sheriff)
