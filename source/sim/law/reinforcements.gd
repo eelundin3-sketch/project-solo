@@ -229,7 +229,7 @@ static func _helping(sim: RefCounted, call: Dictionary) -> void:
 	for id in call.sheriffs:
 		var npc: Dictionary = s.residents.get(str(id), {})
 		if not npc.is_empty() and not npc.get("reinforcing", {}).is_empty():
-			if str(npc.get("arrest", {}).get("phase", "")) in ["cuff", "escort", "book", "lock"]: continue   # still taking him in
+			if str(npc.get("arrest", {}).get("phase", "")) in ["cuff", "lift", "escort", "book", "lock"]: continue   # still taking him in
 			npc.arrest = {}
 			npc.cover_cycle = {}
 			npc.reinforcing.role = "visiting"
@@ -249,7 +249,7 @@ static func _visiting(sim: RefCounted, call: Dictionary) -> void:
 	for i in range(call.sheriffs.size()):
 		var npc: Dictionary = s.residents.get(str(call.sheriffs[i]), {})
 		if npc.is_empty(): continue
-		if str(npc.get("arrest", {}).get("phase", "")) in ["cuff", "escort", "book", "lock"]: arrived = false; continue
+		if str(npc.get("arrest", {}).get("phase", "")) in ["cuff", "lift", "escort", "book", "lock"]: arrived = false; continue
 		npc.reinforcing.role = "visiting"
 		var goal: Array = [spot[0] - 2 - i, spot[1] + 1]
 		if not World.walkable(s, goal): goal = spot

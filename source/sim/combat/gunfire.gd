@@ -177,7 +177,7 @@ static func _assign(sim: RefCounted, town: int, alert: Dictionary, player: Array
 		var d: float = Vector2(cell[0] - player[0], cell[1] - player[1]).length()
 		if d > HEAR_RANGE or Brawl.knocked(s, npc): continue
 		var phase: String = str(npc.get("arrest", {}).get("phase", ""))
-		if phase in ["cuff", "escort", "book", "lock", "fetch", "unlock", "return"]: continue   # already taking someone in
+		if phase in ["cuff", "lift", "escort", "book", "lock", "fetch", "unlock", "return"]: continue   # already taking someone in
 		responders.append(npc)
 		if d < lead_distance and _hands_ok(s, npc):
 			lead_distance = d

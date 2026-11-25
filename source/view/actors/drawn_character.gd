@@ -661,6 +661,55 @@ func _build_frame() -> Dictionary:
 		hip += _joint(0, 0, -dip)
 		chest += _joint(0, 0, -dip) + _joint(float(bad_side) * 1.0, 0, 0)
 		head += _joint(0, 0, -dip)
+	# Sitting: in a chair (hips at seat height, thighs forward, shins down, hands in the lap) or on
+	# the ground (knees up). Tied: on the ground, arms bound behind the back.
+	if action in ["sit", "tied"]:
+		var ground: bool = action == "tied" or bool(pose.get("sit_ground", false))
+		var seat: float = 4.0 if ground else 13.0
+		var breathe: float = sin((float(pose.get("age", 0.0)) + float(posmod(actor_id, 17)) * 0.7) * TAU / 3.6) * 0.6
+		hip = _joint(0, -1.0, seat)
+		chest = _joint(0, 1.5 + (2.0 if action == "tied" else 0.0), seat + (CHEST_HEIGHT - HIP_HEIGHT) - 1.0 + breathe)
+		head = _joint(0, 3.0 + (2.5 if action == "tied" else 0.0), seat + (HEAD_HEIGHT - HIP_HEIGHT) - 2.0 + breathe * 0.6)
+		for side in [-1, 1]:
+			var knee_at: Vector2 = _joint(side * 5.6, 10.0, seat + (8.5 if ground else 0.5))
+			var foot_at: Vector2 = _joint(side * 5.0, 16.0 if ground else 11.5, 1.5)
+			var leg := PackedVector2Array([hip + _joint(side * 5.3, 0, 0), knee_at, foot_at])
+			if side < 0: left_leg = leg
+			else: right_leg = leg
+			var shoulder: Vector2 = chest + _joint(side * 9.4, 0, 0)
+			var elbow: Vector2
+			var hand: Vector2
+			if action == "tied":
+				elbow = shoulder + _joint(side * 5.0, -3.5, -8.0)
+				hand = hip + _joint(side * 1.4, -5.0, 5.0)
+			else:
+				elbow = shoulder + _joint(side * 4.5, 3.5, -8.5)
+				hand = knee_at.lerp(hip, 0.45) + _joint(side * -1.0, 0, 3.0)
+			arms[side] = PackedVector2Array([shoulder, elbow, hand])
+		tilt = 0.0
+		origin = Vector2.ZERO
+	# Holding a prisoner down: kneeling over them, both hands pressing at their back and wrists.
+	if action == "pin":
+		var press: float = sin(phase * TAU * 3.0) * 0.8
+		hip = _joint(0, 1.5, HIP_HEIGHT - 13.0)
+		chest = _joint(0, 9.0, CHEST_HEIGHT - 18.0)
+		head = _joint(0, 12.5, HEAD_HEIGHT - 19.0)
+		left_leg = PackedVector2Array([hip + _joint(-5.3, 0, 0), _joint(-5.6, 10.0, 6.0), _joint(-5.0, 9.0, 1.0)])   # left foot planted
+		right_leg = PackedVector2Array([hip + _joint(5.3, 0, 0), _joint(5.4, 3.0, 2.0), _joint(5.3, -9.0, 2.0)])     # right knee on the ground
+		for side in [-1, 1]:
+			var shoulder: Vector2 = chest + _joint(side * 9.0, 0, 0)
+			var hand: Vector2 = _joint(side * 3.0, 17.0 + press, 4.5)
+			arms[side] = PackedVector2Array([shoulder, shoulder.lerp(hand, 0.5) + _joint(side * 2.5, 0, 2.0), hand])
+	# Hauling a prisoner up: legs braced, leaning back, hands gripping their arm and pulling.
+	if action == "lift":
+		var heave_up: float = smoothstep(0.0, 0.85, phase)
+		var lean: float = -4.0 * heave_up + 6.0 * (1.0 - heave_up)
+		chest += _joint(0, lean, -6.0 * (1.0 - heave_up))
+		head += _joint(0, lean * 1.2, -7.0 * (1.0 - heave_up))
+		for side in [-1, 1]:
+			var shoulder: Vector2 = chest + _joint(side * 9.0, 0, 0)
+			var grip: Vector2 = _joint(side * 2.5, 13.0, lerpf(9.0, 30.0, heave_up))
+			arms[side] = PackedVector2Array([shoulder, shoulder.lerp(grip, 0.5) + _joint(side * 3.0, -1.0, -2.0), grip])
 	for dead_side in pose.get("dead_arms", []):
 		var limp_arm: PackedVector2Array = arms[int(dead_side)]
 		var dangling_elbow: Vector2 = limp_arm[0] + _joint(float(dead_side) * 2.6, 0.5, -8.5)
@@ -937,6 +986,23 @@ func _paint() -> void:
 		draw_line(left_hand, right_hand, Color("3a3b3e"), 1.4, true)
 		for wrist in [left_hand, right_hand]:
 			draw_arc(wrist, 2.2, 0.0, TAU, 12, Color("9a9ca0"), 1.2, true)
+	if action == "tied":
+		# Rope: turns round the chest and arms, a knot, and the wrists lashed behind the back.
+		var rope := Color("b89a62")
+		var rope_dark := Color("7d6440")
+		var chest_at: Vector2 = frame.chest
+		for turn in range(3):
+			var y: float = 3.0 + float(turn) * 4.0
+			var a: Vector2 = chest_at + _joint(-11.0, 0, -y)
+			var b: Vector2 = chest_at + _joint(11.0, 0, -y)
+			draw_line(a, b, rope_dark, 2.6, true)
+			draw_line(a, b, rope, 1.6, true)
+		draw_circle(chest_at + _joint(2.0, 1.5, -7.0), 2.0, rope)
+		var left_wrist: Vector2 = arms[-1][2]
+		var right_wrist: Vector2 = arms[1][2]
+		draw_line(left_wrist, right_wrist, rope, 1.8, true)
+		for wrist in [left_wrist, right_wrist]:
+			draw_arc(wrist, 2.4, 0.0, TAU, 10, rope_dark, 1.4, true)
 	if action == "treat" and float(frame.get("treat_reach", 0.0)) > 0.3:
 		var roll: Vector2 = frame.treat_hand
 		var wound: Vector2 = frame.treat_center
@@ -987,10 +1053,17 @@ func _walk_leg(side: int, hip: Vector2, gait: float, moving: bool) -> PackedVect
 	var foot := _joint(side * 5.3, 0, 3.0)
 	var direction: Vector2 = pose.get("move_direction", forward) if moving else forward
 	var travel := Vector2(direction.x, direction.y * 0.48)
+	# Stepping against the way the body faces (backing off while aiming) or sideways (strafing):
+	# the feet still go the way of travel, but knees only bend the way the body faces, the steps
+	# are shorter, and a backward step lands toe first.
+	var along: float = direction.normalized().dot(forward.normalized()) if moving and direction.length() > 0.01 else 1.0
+	var backing: float = clampf(-along * 1.6, 0.0, 1.0)                  # 0 forwards .. 1 straight back
+	var sideways: float = clampf(1.0 - absf(along) * 1.6, 0.0, 1.0)      # 0 along the facing .. 1 straight across
+	var knee_way := Vector2(forward.x, forward.y * 0.48) if backing > 0.0 or sideways > 0.0 else travel
 	# Keep the standing leg vertical. Only a lowered hip needs knee bend.
 	var flex := maxf(0.0, HIP_HEIGHT + hip.y) * 0.5
 	if moving:
-		var cycle_distance := Director.CELL * Director.WALK_CYCLE_METERS * (1.0 - 0.35 * clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0))
+		var cycle_distance := Director.CELL * Director.WALK_CYCLE_METERS * (1.0 - 0.35 * clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0)) * (1.0 - 0.3 * backing - 0.2 * sideways)
 		# Land just ahead of the hips. The body travels farther past the planted
 		# foot before push-off than it travels to meet it after contact.
 		var front := cycle_distance * WALK_STANCE * 0.375
@@ -1011,19 +1084,20 @@ func _walk_leg(side: int, hip: Vector2, gait: float, moving: bool) -> PackedVect
 			lift = 5.0 * recovery * (1.0 - 0.4 * clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0))
 			flex = 1.0 + 5.0 * recovery
 		foot = _joint(side * 5.4, 0, 3.0 + lift) + travel * stride
-		var pitch := walking_foot_pitch(side, gait)
+		var pitch := walking_foot_pitch(side, gait) * (1.0 - 1.7 * backing)   # backing off: toe first, heel down
+		if sideways > 0.0: foot += _joint(side * 1.2 * sideways * sin(PI * clampf(cycle, 0.0, 1.0)), 0, 0)   # a side-step opens the feet
 		var contact := boot_contact(pitch)
 		foot += contact - boot_roll(pitch) * contact
 	var sneak: float = clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0)
 	if sneak > 0.001 and not moving:
 		# A crouched stance: one foot a little ahead of the other.
 		foot += _joint(side * 0.8 * sneak, side * 2.5 * sneak, 0.0)
-	var knee := top.lerp(foot, 0.52) + travel * flex
+	var knee := top.lerp(foot, 0.52) + knee_way * flex
 	if sneak > 0.001:
 		# Two-bone knee: the closer the hip comes to the foot, the further the knee folds forward.
 		var reach_now := top.distance_to(foot)
 		var bend := sqrt(maxf(0.0, 13.4 * 13.4 - reach_now * reach_now * 0.25))
-		knee = top.lerp(foot, 0.5) + travel * maxf(flex, bend)
+		knee = top.lerp(foot, 0.5) + knee_way * maxf(flex, bend)
 	return PackedVector2Array([top, knee, foot])
 
 ## Running cycle, solved as a two-bone leg so the knee always bends forwards: a short stance

@@ -23,6 +23,7 @@ const MAX_HOURS := 48
 const WITNESS_RANGE := 24.0           # a sheriff this close sees a crime happen
 const SEE_RANGE := 14.0               # a sheriff this close recognises a wanted player
 const STANDOFF_TICKS := 140           # how long he holds you at gunpoint before he comes for you
+const LIFT_TICKS := 40               # hauling a prisoner who was held down up onto their feet
 const CUFF_TICKS := 30
 const LOCK_TICKS := 16
 const BOOK_TICKS := 76                # the whole booking at the desk
@@ -256,6 +257,7 @@ static func update(sim: RefCounted) -> void:
 			"standoff": _standoff(sim, npc, arrest, cell, player, gap)
 			"approach": _approach(sim, npc, arrest, cell, player, gap)
 			"cuff": _cuff(sim, npc, arrest, cell, player)
+			"lift": _lift(sim, npc, arrest, cell)
 			"escort": _escort(sim, npc, arrest, cell)
 			"book": _book(sim, npc, arrest)
 			"lock": _lock(sim, npc, arrest)
@@ -281,7 +283,7 @@ static func _nearer_sheriff(s: Dictionary, npc: Dictionary, player: Array) -> in
 ## The sheriff of this town who has the prisoner (cuffing, escorting, booking...), or 0.
 static func _other_lead(s: Dictionary, npc: Dictionary) -> int:
 	for other in sheriffs(s, int(npc.settlement)):
-		if other.id != npc.id and str(other.get("arrest", {}).get("phase", "")) in ["cuff", "escort", "book", "lock", "fetch", "unlock", "return"]: return int(other.id)
+		if other.id != npc.id and str(other.get("arrest", {}).get("phase", "")) in ["cuff", "lift", "escort", "book", "lock", "fetch", "unlock", "return"]: return int(other.id)
 	return 0
 
 static func _join_lead(sim: RefCounted, npc: Dictionary, arrest: Dictionary, lead: int) -> void:
@@ -413,6 +415,8 @@ static func _begin_cuffing(sim: RefCounted, npc: Dictionary, arrest: Dictionary)
 	var pc: Dictionary = s.player_control
 	arrest.phase = "cuff"
 	arrest.since = s.tick
+	# On the ground: he kneels and holds the prisoner down while the cuffs go on, then hauls them up.
+	arrest.pinned = Brawl.player_down(s)
 	pc.restrained = true
 	pc.surrender = false
 	pc.escort = npc.id
@@ -428,14 +432,49 @@ static func _begin_cuffing(sim: RefCounted, npc: Dictionary, arrest: Dictionary)
 ## Cuffs on; the player is helped up (if down) and walked to the booking desk.
 static func _cuff(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: Array, player: Array) -> void:
 	var s: Dictionary = sim.state
+	var pc: Dictionary = s.player_control
+	if bool(arrest.get("pinned", false)):
+		# Held down: the prisoner stays on the ground (the knock-down is stretched) until he's done.
+		var knock: Dictionary = pc.get("knock", {})
+		if not knock.is_empty():
+			knock.down_until = maxi(int(knock.down_until), s.tick + 4)
+			knock.rise_until = int(knock.down_until) + LIFT_TICKS
+		npc.status = "Holding the prisoner down"
+		if s.tick - int(arrest.since) < CUFF_TICKS: return
+		# Cuffed: now he hauls the prisoner to their feet (law.gd _lift), then the walk begins.
+		arrest.phase = "lift"
+		arrest.since = s.tick
+		if not knock.is_empty():
+			knock.down_until = s.tick
+			knock.rise_until = s.tick + LIFT_TICKS
+			knock.rise_ticks = LIFT_TICKS
+		_say(sim, npc.id, "Up you get.")
+		npc.status = "Pulling the prisoner to their feet"
+		return
 	if s.tick - int(arrest.since) < CUFF_TICKS: return
-	s.player_control.knock = {}   # on your feet, hands behind your back
+	pc.knock = {}   # on your feet, hands behind your back
 	var office: Dictionary = office_of(s, npc.settlement)
 	if office.is_empty():
 		_release_custody(s, npc)
 		return
 	_start_escort(sim, npc, arrest, cell, desk_spot(office), "desk", office)
 	tend_prisoner(sim, npc.id)   # first aid on the spot
+	_say(sim, npc.id, "Come along. Don't try anything.")
+	npc.status = "Taking the traveller to be booked"
+
+## Hauling a cuffed prisoner up off the ground, then walking them to the desk.
+static func _lift(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: Array) -> void:
+	var s: Dictionary = sim.state
+	npc.status = "Pulling the prisoner to their feet"
+	if s.tick - int(arrest.since) < LIFT_TICKS: return
+	s.player_control.knock = {}
+	arrest.pinned = false
+	var office: Dictionary = office_of(s, npc.settlement)
+	if office.is_empty():
+		_release_custody(s, npc)
+		return
+	_start_escort(sim, npc, arrest, cell, desk_spot(office), "desk", office)
+	tend_prisoner(sim, npc.id)
 	_say(sim, npc.id, "Come along. Don't try anything.")
 	npc.status = "Taking the traveller to be booked"
 
