@@ -20,6 +20,7 @@ const ContextMenu = preload("res://view/ui/context_menu.gd")
 const ContextActions = preload("res://sim/player/context_actions.gd")
 const MainMenu = preload("res://view/ui/main_menu.gd")
 const JournalWindow = preload("res://view/ui/journal_window.gd")
+const PauseMenu = preload("res://view/ui/pause_menu.gd")
 const KnockoutScreen = preload("res://view/ui/knockout_screen.gd")
 const Law = preload("res://sim/law/law.gd")
 const Probe = preload("res://sim/diagnostics/perf_probe.gd")
@@ -65,6 +66,8 @@ var skipping: bool = false
 const SLEEP_SPEED := 8
 var medieval_map: Control
 var journal: Control
+var pause_menu: CanvasLayer           # Esc while playing (pause_menu.gd)
+var paused_before_menu: bool = false   # the clock's state when the pause menu opened
 var context_part: String = ""   # the furniture or fixture the open menu is about
 var skip_previous_speed: int = 1
 var menu_active: bool = false
@@ -124,6 +127,9 @@ func _ready() -> void:
 	journal.simulation = simulation
 	journal.visible = false
 	menu_layer.add_child(journal)
+	pause_menu = PauseMenu.new()
+	add_child(pause_menu)
+	pause_menu.chosen.connect(_on_pause_chosen)
 	var perf_layer := CanvasLayer.new()
 	perf_layer.layer = 8
 	add_child(perf_layer)
@@ -391,6 +397,12 @@ func handle_action(kind: String) -> void:
 
 func _input(event: InputEvent) -> void:
 	if menu_active: return
+	if is_paused_menu():
+		# The pause menu is up: Esc resumes; everything else goes to its buttons (or nowhere).
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+			close_pause_menu()
+			get_viewport().set_input_as_handled()
+		return
 	# Handle zoom before modal UI panels can consume trackpad/mouse scroll events.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and not event.pressed:
 		aiming = false
@@ -411,7 +423,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if menu_active: return
+	if menu_active or is_paused_menu(): return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
 			# Two quick right-clicks on the same spot: walk there by the shortest route.
@@ -498,7 +510,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				if journal.visible: journal.visible = false
 				elif map_mode: toggle_map()   # Esc closes the map first, then stops a travel, then closes panels
 				elif int(simulation.state.get("player_control", {}).get("travelling", 0)) != 0: simulation.submit("stop_travel")
-				else: player_panels.show_mode("")
+				elif player_panels.visible: player_panels.show_mode("")
+				else: open_pause_menu()   # nothing open: pause, with the pause menu
 			KEY_SPACE:
 				if not player_panels.visible and not clock.paused: _submit_strike("shove")
 			KEY_P: handle_action("pause")
@@ -512,6 +525,38 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F9: handle_action("load")
 			KEY_TAB: handle_action("follow")
 			KEY_F3: handle_action("observer")
+
+# --- the pause menu (Esc) ---------------------------------------------------------------------------
+
+func is_paused_menu() -> bool:
+	return pause_menu != null and pause_menu.visible
+
+func open_pause_menu() -> void:
+	if menu_active or is_paused_menu() or (knockout != null and knockout.visible): return
+	context_menu.close()
+	aiming = false
+	pointer_held = false
+	paused_before_menu = clock.paused
+	clock.paused = true
+	pause_menu.open(not SaveSlots.newest(save_dir, [save_path]).is_empty())
+
+func close_pause_menu() -> void:
+	if not is_paused_menu(): return
+	pause_menu.close()
+	clock.paused = paused_before_menu
+
+func _on_pause_chosen(id: String) -> void:
+	match id:
+		"resume": close_pause_menu()
+		"save":
+			handle_action("save")
+			pause_menu.status.text = $DebugHUD.notice.text
+			pause_menu.buttons.load.disabled = false
+		"load":
+			close_pause_menu()
+			handle_action("load")
+		"title": get_tree().reload_current_scene()
+		"quit": get_tree().quit()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
