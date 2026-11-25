@@ -20,9 +20,14 @@ const DEMAND_WAIT := 150       # ticks they wait for you to hand things over
 const SHOOT_RANGE := 11
 const SHOT_EVERY := 45
 const GIVE_UP_RANGE := 32      # they stop chasing you this far from the camp
-const CAPTIVE_MIN := 1200      # held at least two hours before you can slip free at night
+const LIFT_TICKS := 40         # hauling a downed captive to their feet
 const CAPTIVE_MAX := 14400     # and never longer than a day
 const COOLDOWN := 14400        # after robbing you they leave you alone for a day
+const COUNTDOWN := [[50, "I'm not asking twice."], [100, "One..."], [125, "Two..."]]   # then, at DEMAND_WAIT, they shoot
+const ROPE_TICKS := 300          # working the ropes loose takes about half an hour
+const WATCH_HEARS := 4           # the watch hears you at the ropes this close
+const STASH_GUARD := 3           # this close to their loot pile and they'll stop you
+const NIGHT_NOTICE := 6          # an awake bandit's notice range in the dark (less if you crouch)
 const MAGAZINE_ROUNDS := 5       # shots before a reload
 const LOOT := ["rifle", "shotgun", "cartridge", "shell", "lantern"]
 const LINES := {
@@ -116,6 +121,7 @@ const POT := [1, -1]
 const WOODPILE := [8, 2]
 const LOOKOUT := [0, 7]
 const POST := [-5, 3]
+const PATROL := [[0, 7], [-8, 6], [8, 5]]   # the night watch's round
 const ROUTINE := ["sit", "cook", "wood", "watch"]
 ## Solid things round the camp to crouch behind in a fight: the woodpile (beside its fetching
 ## spot), crates and a couple of rocks. Blocked cells, so they are low cover (cover.gd).
@@ -207,6 +213,10 @@ static func update(sim: RefCounted) -> void:
 		var shot: int = int(s.get("shotgun", {}).get("last_shot", -1000))
 		if hurt or (from_camp <= NOTICE_RANGE + 8 and shot > s.tick - 4):
 			_start_fight(sim, able, hurt)
+		elif not captive(s) and _at_stash(s, player) and _notices(s, able, player, from_camp):
+			# Caught going through their loot pile (cool-down or not): they open fire.
+			_say_line(s, _leader(s, able), "Hey! Get away from that!")
+			_start_fight(sim, able, false)
 		elif not captive(s) and s.tick >= int(b.cooldown_until) and _notices(s, able, player, from_camp):
 			_start_demand(sim, able)
 	elif str(b.phase) == "demand":
@@ -234,6 +244,16 @@ static func _idle(sim: RefCounted, able: Array) -> void:
 	for npc in able:
 		var index: int = s.bandits.members.find(int(npc.id))
 		var entity: Dictionary = s.entities[str(npc.id)]
+		if npc.has("captor"): continue   # walking you to the post (_bring_in)
+		if DayClock.bed_hours(s, npc) and int(npc.id) == _night_watch(s, able):
+			# On night watch: awake at the lookout (carrying a light), in three-hour shifts.
+			_sit_up(npc)
+			if not npc.get("sleeping", {}).is_empty(): npc.sleeping = {}
+			# He walks a round: the lookout, past the post, the far side of camp (20 minutes each).
+			var look_out: Array = at_camp(spot, PATROL[(int(s.tick) / 200) % PATROL.size()])
+			if entity.cell != look_out and _turn(s, npc, 2): _walk(s, npc, look_out)
+			npc.status = "On night watch"
+			continue
 		if DayClock.bed_hours(s, npc):
 			_sit_up(npc)
 			var bed: Array = _bed(spot, index)
@@ -274,6 +294,14 @@ static func _idle(sim: RefCounted, able: Array) -> void:
 	if s.tick % 1200 == 0 and able.size() >= 2 and able[0].get("sleeping", {}).is_empty() and able[1].get("sleeping", {}).is_empty():
 		_say(sim, able[0], "chat")
 
+## Who keeps watch tonight: the night is split into three-hour shifts, turn and turn about.
+static func _night_watch(s: Dictionary, able: Array) -> int:
+	if able.is_empty(): return 0
+	var ids: Array = able.map(func(n: Dictionary) -> int: return int(n.id))
+	ids.sort()
+	var shift: int = (int(s.tick) / 600 + 3) / 3
+	return int(ids[shift % ids.size()])
+
 ## Walk to `cell` (a step at a time) and sit down there on the ground, facing the fire.
 static func _do_at(s: Dictionary, npc: Dictionary, cell: Array, status: String, offset: Array, cooking: bool) -> void:
 	var entity: Dictionary = s.entities[str(npc.id)]
@@ -308,8 +336,11 @@ static func _walk(s: Dictionary, npc: Dictionary, goal: Array) -> void:
 
 static func _notices(s: Dictionary, able: Array, player: Array, from_camp: int) -> bool:
 	if from_camp > NOTICE_RANGE: return false
+	var dark: bool = load("res://sim/world/light.gd").daylight(s) < 60
+	var low: bool = bool(s.player_control.get("crouching", false))
 	for npc in able:
-		var reach: int = SLEEPER_RANGE if not npc.get("sleeping", {}).is_empty() else NOTICE_RANGE
+		var reach: int = SLEEPER_RANGE if not npc.get("sleeping", {}).is_empty() else (NIGHT_NOTICE if dark else NOTICE_RANGE)
+		if low: reach = maxi(2, reach - (3 if dark else 4))
 		var at: Array = s.entities[str(npc.id)].cell
 		if maxi(absi(at[0] - player[0]), absi(at[1] - player[1])) <= reach: return true
 	return false
@@ -332,6 +363,7 @@ static func _start_demand(sim: RefCounted, able: Array) -> void:
 	_wake_all(s, able)
 	s.bandits.phase = "demand"
 	s.bandits.since = s.tick
+	s.bandits.count_said = 0
 	var leader: Dictionary = _leader(s, able)
 	leader.status = "Demanding your valuables"
 	_say(sim, leader, "demand")
@@ -359,6 +391,46 @@ static func _demand(sim: RefCounted, able: Array, player: Array, from_camp: int,
 		return
 	var at: Array = s.entities[str(leader.id)].cell
 	if maxi(absi(at[0] - player[0]), absi(at[1] - player[1])) > 2 and s.tick % 4 == 0: _step(s, leader, player)
+	# The others spread out to cover you from both sides, rifles on you.
+	var camp: Array = s.bandits.cell
+	var dir := Vector2(player[0] - camp[0], player[1] - camp[1])
+	if dir.length() < 0.5: dir = Vector2(0, 1)
+	dir = dir.normalized()
+	var across := Vector2(-dir.y, dir.x)
+	var k := 0
+	for npc in able:
+		if int(npc.id) == int(leader.id): continue
+		var side: float = 1.0 if k % 2 == 0 else -1.0
+		var want := Vector2(player[0], player[1]) + across * side * (4.0 + float(k / 2) * 2.0) - dir * 1.0
+		var spot: Array = _open_near(s, [roundi(want.x), roundi(want.y)])
+		k += 1
+		npc.status = "Covering you"
+		if not spot.is_empty() and s.entities[str(npc.id)].cell != spot and _turn(s, npc, 2): _walk(s, npc, spot)
+	# A countdown you can hear: a warning, then "One... two..."
+	var waited: int = s.tick - int(s.bandits.since)
+	var said: int = int(s.bandits.get("count_said", 0))
+	for step in COUNTDOWN:
+		if waited >= int(step[0]) and said < int(step[0]):
+			s.bandits.count_said = int(step[0])
+			_say_line(s, leader, str(step[1]))
+			pc.notice = "%s  (Surrender: F)" % str(step[1])
+
+static func _at_stash(s: Dictionary, player: Array) -> bool:
+	var pile: Array = s.entities[str(s.bandits.stash)].cell
+	return maxi(absi(pile[0] - player[0]), absi(pile[1] - player[1])) <= STASH_GUARD
+
+## The nearest walkable cell to `c` (a few cells round), or [].
+static func _open_near(s: Dictionary, c: Array) -> Array:
+	for r in range(0, 4):
+		for d in [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]:
+			var cell: Array = [c[0] + d[0] * r, c[1] + d[1] * r]
+			if World.walkable(s, cell): return cell
+	return []
+
+static func _say_line(s: Dictionary, npc: Dictionary, text: String) -> void:
+	if not s.has("speech"): s.speech = []
+	s.speech.append({"speaker": int(npc.id), "text": text, "tick": s.tick, "until": s.tick + 50})
+	while s.speech.size() > 30: s.speech.pop_front()
 
 static func _start_fight(sim: RefCounted, able: Array, lethal: bool = false) -> void:
 	var s: Dictionary = sim.state
@@ -528,34 +600,141 @@ static func _rob(sim: RefCounted, leader: Dictionary) -> void:
 	_say(sim, leader, "robbed")
 	load("res://sim/world/chronicle.gd").record(s, "robbed_by_bandits", 0, int(leader.id), int(s.player), s.entities[str(s.player)].cell, {"coins": coins})
 
-## Tied to the post at the camp.
+## Taken captive: one of them hauls you up if you're down, then walks you to the post and ties you
+## there. You can't act meanwhile (simulation.gd blocks your commands while captive).
 static func _take_captive(sim: RefCounted, leader: Dictionary) -> void:
 	var s: Dictionary = sim.state
 	var pc: Dictionary = s.player_control
-	s.entities[str(s.player)].cell = post(s)
 	s.player_path = []
-	pc.knock = {}
 	pc.running = false
 	pc.pending = {}
-	pc.captive = {"since": s.tick}
+	pc.captive = {"since": s.tick, "stage": "fetch", "by": int(leader.id), "next_step": s.tick, "progress": 0, "working": false}
+	leader.captor = {"phase": "fetch", "since": s.tick}
+	leader.gun_out = false
 	_say(sim, leader, "captive")
-	pc.notice = "The bandits tie you up at their camp. Wait for them to sleep."
+	pc.notice = "The bandits drag you off to their camp."
 
-## Held at the camp: you slip free at night once every bandit is asleep (after two hours at least),
-## or after a day whatever happens. Your things stay in their loot pile.
+## Every tick while captive: fetched, hauled up, walked to the post, then tied. Tied, you can work
+## the ropes loose (F) unless the watch hears you; after a day they cut you loose anyway.
 static func _captive(sim: RefCounted) -> void:
 	var s: Dictionary = sim.state
 	var pc: Dictionary = s.player_control
+	var c: Dictionary = pc.captive
+	var stage: String = str(c.get("stage", "tied"))
+	if stage != "tied":
+		_bring_in(sim, c)
+		return
 	if s.tick % 20 != 0: return
-	var since: int = int(pc.captive.since)
-	var all_asleep := true
-	for npc in _members(s):
-		if _able(s, npc) and npc.get("sleeping", {}).is_empty(): all_asleep = false
+	var since: int = int(c.since)
 	var cleared: bool = bool(s.bandits.get("cleared", false))
-	if cleared or s.tick - since >= CAPTIVE_MAX or (all_asleep and s.tick - since >= CAPTIVE_MIN):
+	if bool(c.get("working", false)):
+		c.progress = int(c.get("progress", 0)) + 20
+		for npc in _members(s):
+			if not _able(s, npc) or not npc.get("sleeping", {}).is_empty(): continue
+			var at: Array = s.entities[str(npc.id)].cell
+			var me: Array = s.entities[str(s.player)].cell
+			if maxi(absi(at[0] - me[0]), absi(at[1] - me[1])) <= WATCH_HEARS:
+				c.working = false
+				c.progress = maxi(0, int(c.progress) - 120)
+				_say_line(s, npc, ["Oi! Quit fiddling with those ropes!", "Keep still, you.", "Try that again and you'll regret it."][int(s.tick / 20) % 3])
+				pc.notice = "%s heard you at the ropes. Wait until he's further off." % s.entities[str(npc.id)].name
+				break
+	if cleared or int(c.get("progress", 0)) >= ROPE_TICKS or s.tick - since >= CAPTIVE_MAX:
+		var slipped: bool = int(c.get("progress", 0)) >= ROPE_TICKS
 		pc.captive = {}
-		pc.notice = "You work the ropes loose and slip free. Your things are in their loot pile." if all_asleep else "The bandits cut you loose and tell you to go."
-		sim.record("The traveller slipped free of the bandits.")
+		pc.notice = "You work the ropes loose. Your things are in their loot pile; mind the watch." if slipped else ("You're free." if cleared else "The bandits cut you loose and tell you to go.")
+		sim.record("The traveller slipped free of the bandits." if slipped else "The bandits let their captive go.")
+
+## F while tied: start (or stop) working at the ropes.
+static func work_ropes(s: Dictionary) -> void:
+	var c: Dictionary = s.get("player_control", {}).get("captive", {})
+	if c.is_empty() or str(c.get("stage", "tied")) != "tied": return
+	c.working = not bool(c.get("working", false))
+	s.player_control.notice = ("You work quietly at the knots... (%d%%)" % (int(c.get("progress", 0)) * 100 / ROPE_TICKS)) if c.working else "You stop and keep still."
+
+## The walk to the post: the captor comes over, hauls you up if you're down, and leads you there,
+## you a step behind him; at the post you're tied.
+static func _bring_in(sim: RefCounted, c: Dictionary) -> void:
+	var s: Dictionary = sim.state
+	var pc: Dictionary = s.player_control
+	var me: Array = s.entities[str(s.player)].cell
+	var captor: Dictionary = s.residents.get(str(c.get("by", 0)), {})
+	if captor.is_empty() or not _able(s, captor):
+		# The captor went down: another of them takes over, or they tie you where you stand.
+		var others: Array = _members(s).filter(func(n: Dictionary) -> bool: return _able(s, n))
+		if others.is_empty():
+			_tie(sim, c, captor)
+			return
+		captor = others[0]
+		c.by = int(captor.id)
+		captor.captor = {"phase": "fetch", "since": s.tick}
+	var at: Array = s.entities[str(captor.id)].cell
+	var Brawl = load("res://sim/combat/brawl.gd")
+	match str(c.stage):
+		"fetch":
+			if maxi(absi(at[0] - me[0]), absi(at[1] - me[1])) > 1:
+				if s.tick % 2 == 0: _step(s, captor, me)
+				captor.status = "Coming to tie you up"
+				return
+			if Brawl.player_down(s):
+				# Hauled up off the ground (the same moves as the law's lift).
+				var knock: Dictionary = pc.get("knock", {})
+				if not knock.is_empty():
+					knock.down_until = s.tick
+					knock.rise_until = s.tick + LIFT_TICKS
+					knock.rise_ticks = LIFT_TICKS
+				c.stage = "lift"
+				c.since_stage = s.tick
+				captor.captor = {"phase": "lift", "since": s.tick}
+				_say_line(s, captor, "Up. On your feet.")
+				return
+			_start_walk(s, c, captor)
+		"lift":
+			captor.status = "Hauling you up"
+			if s.tick - int(c.get("since_stage", s.tick)) < LIFT_TICKS: return
+			pc.knock = {}
+			_start_walk(s, c, captor)
+		"walk":
+			captor.status = "Walking you to the post"
+			if s.tick < int(c.get("next_step", 0)): return
+			var target: Array = post(s)
+			if captor.path.is_empty():
+				# At the post: he steps aside and you (a step behind him) step onto it.
+				if at == target:
+					for d in [[0, 1], [1, 0], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]:
+						var aside: Array = [target[0] + d[0], target[1] + d[1]]
+						if aside != me and World.walkable(s, aside):
+							s.entities[str(captor.id)].cell = aside
+							break
+					if maxi(absi(target[0] - me[0]), absi(target[1] - me[1])) <= 1: s.entities[str(s.player)].cell = target.duplicate()
+				_tie(sim, c, captor)
+				return
+			var next: Array = captor.path.pop_front()
+			if next == at: return
+			if World.walkable(s, next):
+				if next == me:
+					return    # never through you
+				s.entities[str(s.player)].cell = at.duplicate()   # you step where he was
+				s.entities[str(captor.id)].cell = next
+			c.next_step = s.tick + 3
+
+static func _start_walk(s: Dictionary, c: Dictionary, captor: Dictionary) -> void:
+	var route := Nav.request_path(s, s.entities[str(captor.id)].cell, post(s))
+	captor.path = route.path if route.ok else []
+	if not captor.path.is_empty() and captor.path[0] == s.entities[str(captor.id)].cell: captor.path.pop_front()   # his own cell
+	c.stage = "walk"
+	c.next_step = s.tick
+	captor.captor = {"phase": "escort", "since": s.tick}
+
+static func _tie(sim: RefCounted, c: Dictionary, captor: Dictionary) -> void:
+	var s: Dictionary = sim.state
+	c.stage = "tied"
+	c.since = s.tick
+	if not captor.is_empty():
+		captor.erase("captor")
+		captor.path = []
+		_say_line(s, captor, "Sit down and keep quiet.")
+	s.player_control.notice = "The bandits tie you to the post. F: work at the ropes (quietly, when the watch is away)."
 
 # --- beaten ------------------------------------------------------------------------------------
 

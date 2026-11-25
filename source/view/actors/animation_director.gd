@@ -73,6 +73,17 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		result.action = "stagger" if npc.get("impact_kind", "") == "shove" else "hit"
 		result.phase = 1.0 - float(npc.impact_until - s.tick) / 12.0
 		return result
+	# A bandit taking you to the post: hauling you up, then leading you by the arm.
+	if not npc.is_empty() and not npc.get("captor", {}).is_empty():
+		result.target = s.get("player", 0)
+		match str(npc.captor.phase):
+			"lift":
+				result.action = "lift"
+				result.phase = clampf(float(s.tick - int(npc.captor.since)) / 40.0, 0.0, 1.0)
+				return result
+			"escort":
+				result.action = "escort"
+				return result
 	# A bandit who has given up: hands in the air (bandits.gd morale).
 	if not npc.is_empty() and bool(npc.get("surrendered", false)):
 		result.action = "surrender"
@@ -148,7 +159,8 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		return result
 	# Tied up at the bandits' camp: sitting on the ground, roped.
 	if entity.kind == "player" and not s.get("player_control", {}).get("captive", {}).is_empty():
-		result.action = "tied"
+		# Being walked to the post: hands bound behind the back; there, sat and roped.
+		result.action = "tied" if str(s.player_control.captive.get("stage", "tied")) == "tied" else "cuffed"
 		return result
 	# The player under arrest (hands cuffed behind the back) or giving up (hands raised).
 	if entity.kind == "player" and bool(s.get("player_control", {}).get("restrained", false)):

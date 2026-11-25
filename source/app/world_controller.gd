@@ -335,7 +335,7 @@ func handle_action(kind: String) -> void:
 			player_panels.toggle("health")
 		"interact":
 			if player_panels.visible: player_panels.show_mode("")
-			elif Law.standoff_sheriff(simulation.state) != 0: simulation.submit("surrender")
+			elif Law.standoff_sheriff(simulation.state) != 0 or not simulation.state.get("player_control", {}).get("captive", {}).is_empty(): simulation.submit("surrender")
 			else: simulation.submit("interact",{"target":selected_id})
 		"injury_demo": simulation.submit("debug_injury",{"part":"right_forearm","damage":24,"kind":"cut"})
 		"encounter_demo": simulation.submit("demo_encounter")

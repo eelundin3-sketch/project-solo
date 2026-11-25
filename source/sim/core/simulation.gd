@@ -302,7 +302,7 @@ func _drain(queue_name: String, is_command: bool) -> void:
 func apply_command(entry: Dictionary) -> void:
 	# Someone lying on the ground cannot act until they are back on their feet.
 	if state.has("brawl") and entry.kind in PLAYER_ACTS and entry.kind != "surrender" and Bandits.captive(state):
-		state.player_control.notice = "You're tied up. Wait for the bandits to sleep."
+		state.player_control.notice = "You're tied up. F: work at the ropes when the watch is away."
 		return
 	if state.has("brawl") and entry.kind in PLAYER_ACTS and (Brawl.player_down(state) or Law.restrained(state)):
 		return
@@ -388,6 +388,9 @@ func apply_command(entry: Dictionary) -> void:
 		ContextActions.request(self, int(entry.payload.get("target", 0)), str(entry.payload.get("action", "")), str(entry.payload.get("part", "")))
 		return
 	if entry.kind=="surrender" and state.has("player_control"):
+		if Bandits.captive(state):
+			Bandits.work_ropes(state)   # tied up: F works at the knots
+			return
 		Law.surrender(state)
 		return
 	if entry.kind=="rummage" and state.has("player_control"):
