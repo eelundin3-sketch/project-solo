@@ -1,6 +1,7 @@
 extends RefCounted
 const DayClock = preload("res://sim/world/day_clock.gd")
 const Capital = preload("res://sim/settlement/capital.gd")
+const Reinforcements = preload("res://sim/law/reinforcements.gd")
 const World = preload("res://sim/world/world_db.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
 const Jobs = preload("res://sim/jobs/job_board.gd")
@@ -43,6 +44,7 @@ static func update(sim: RefCounted) -> void:
 		var npc: Dictionary = s.residents[key]
 		if s.tick < int(npc.get("impact_until", 0)): continue
 		if int(npc.get("bandit", 0)) != 0: continue   # bandits live by their own rules (bandits.gd)
+		if not npc.get("reinforcing", {}).is_empty() and Reinforcements.busy(npc): continue   # running for help, or on the road to help (reinforcements.gd)
 		if LocalCombat.busy(s, npc.id) or npc.health <= 0: continue
 		if Brawl.busy(s, npc): continue
 		if not npc.get("migration", {}).is_empty():

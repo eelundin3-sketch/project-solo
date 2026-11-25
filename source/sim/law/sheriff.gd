@@ -104,7 +104,7 @@ static func ensure(sim: RefCounted) -> void:
 		for npc in s.residents.values():
 			if npc.settlement == town.id and npc.occupation not in ["Sheriff", "Child"] and npc.health > 0 and not npc.get("garrison", false): others += 1
 		var want: int = load("res://sim/settlement/capital.gd").sheriffs_wanted(s, int(town.id))   # 3; 5 in the capital
-		var have: int = roster(s, town.id).size()
+		var have: int = strength(s, int(town.id))
 		var office: Dictionary = s.entities[str(town.office)]
 		while have < want:
 			var door: Array = office.get("door", office.cell)
@@ -119,6 +119,16 @@ static func ensure(sim: RefCounted) -> void:
 				var short: int = KIT_BANDAGES - Inventory.amount(s, int(sheriff_id), "bandage")
 				var spare: int = mini(short, mini(Inventory.amount(s, source, "bandage"), Inventory.available(s, int(sheriff_id))))
 				if spare > 0: Inventory.transfer(s, source, int(sheriff_id), "bandage", spare)
+
+## A town's own sheriffs, counting those away helping another town (reinforcements.gd) and not
+## counting visitors helping here, so nobody is recruited just because some are on the road.
+static func strength(s: Dictionary, town: int) -> int:
+	var total := 0
+	for npc in s.get("residents", {}).values():
+		if npc.occupation != "Sheriff" or int(npc.health) <= 0: continue
+		var home: int = int(npc.get("reinforcing", {}).get("home", npc.settlement))
+		if home == town: total += 1
+	return total
 
 ## "desk" or "patrol": sheriffs take turns, so at least one is in the office at any time.
 static func duty(s: Dictionary, npc: Dictionary) -> String:

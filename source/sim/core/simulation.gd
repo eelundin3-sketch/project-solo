@@ -54,6 +54,7 @@ const StallService = preload("res://sim/economy/stall_service.gd")
 const Light = preload("res://sim/world/light.gd")
 const Bandits = preload("res://sim/factions/bandits.gd")
 const Capital = preload("res://sim/settlement/capital.gd")
+const Reinforcements = preload("res://sim/law/reinforcements.gd")
 ## Commands that are the player doing something: refused while down or restrained, and they wake
 ## a sleeping player.
 const PLAYER_ACTS := ["move_player", "player_strike", "interact", "shotgun_fire", "hotbar_use", "eat", "drink", "treat_body", "context_action", "walk_to", "travel", "loot_take", "loot_all", "loot_coins", "loot_strip", "loot_give", "wear_item", "take_off", "hold_item", "hotbar_assign", "crouch_toggle", "travel_run", "shotgun_toggle", "shotgun_reload", "person_trade", "take_item", "surrender", "haggle"]
@@ -165,6 +166,7 @@ func step() -> void:
 		Probe.mark("brawl")
 		Law.update(self)
 		Bandits.update(self)
+		Reinforcements.update(self)
 		Probe.mark("law")
 		Gunfire.update(self)
 		Probe.mark("gunfire")
