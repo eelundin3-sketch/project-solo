@@ -27,6 +27,10 @@ const COVER_SEARCH := 8
 const ADVANCE_BEYOND := 8.0       # farther than this from the gunman, a sheriff works closer for a better shot
 const SHOTS_BEFORE_ADVANCE := 2   # shots from one cover before moving up, when still too far
 const ADVANCE_STEP_TICKS := 3     # moving between covers is slow and low: a step every third tick
+const HOLD_TICKS := 200          # a gunman who stops firing but keeps the gun out: after this they move in
+const SHOUT_GAP := 100           # a sheriff shouts at most once in this many ticks
+const FLANK_NEAR := 5            # a flanking spot is this close to the gunman...
+const FLANK_FAR := 10            # ...and no further
 const SAFE_AFTER_SHOT := 15       # only move while the gunman has not fired for this long (or is reloading)
 const Bleeding = preload("res://sim/combat/bleeding.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
@@ -148,12 +152,18 @@ static func update(sim: RefCounted) -> void:
 					alert.stopped_at = s.tick
 					alert.lethal_was = bool(alert.lethal)
 			"hold":
-				if not bool(gun.get("equipped", false)) or Brawl.player_down(s):
+				# The gunman has stopped but keeps the gun out: after a while they stop waiting and move in.
+				if not bool(gun.get("equipped", false)) or Brawl.player_down(s) or s.tick - int(alert.get("stopped_at", s.tick)) >= HOLD_TICKS:
 					alert.phase = "arrest"
 			"arrest":
 				pass
-		if Brawl.player_down(s) and alert.phase in ["engage", "hold"] and not bool(alert.lethal):
+		# Brought down, or crawling on a shot-up leg: they move in and take the gunman (not when it's to the death).
+		var crawling: bool = load("res://sim/combat/limbs.gd").crawling(s, int(s.player))
+		if (Brawl.player_down(s) or crawling) and alert.phase in ["engage", "hold"] and not bool(alert.lethal):
 			alert.phase = "arrest"
+		if str(alert.phase) != str(alert.get("phase_said", "")):
+			alert.phase_said = alert.phase
+			_announce(sim, town, alert)
 		_assign(sim, town, alert, player)
 
 ## Gives every nearby sheriff his part: the lead fights or arrests, the others cover.
@@ -195,6 +205,23 @@ static func _assign(sim: RefCounted, town: int, alert: Dictionary, player: Array
 		elif str(arrest.phase) == "engage" and str(alert.phase) == "arrest" and int(npc.id) != lead:
 			_stand_down(s, npc)
 
+## The lead calls out when the fight changes, so the player can tell what the sheriffs are doing.
+static func _announce(sim: RefCounted, town: int, alert: Dictionary) -> void:
+	var s: Dictionary = sim.state
+	var lead: Dictionary = s.residents.get(str(alert.get("lead", 0)), {})
+	if lead.is_empty():
+		for npc in Law().sheriffs(s, town): lead = npc; break
+	if lead.is_empty(): return
+	var line: String = {"engage": "Shots fired! Take cover!", "hold": "Put the gun down. Now.", "lethal": "That's it! No more warnings!", "arrest": "He's done! Move in!"}.get(str(alert.phase), "")
+	if line != "": _shout(sim, lead, line, true)
+
+## A sheriff shouts, but not over and over: at most once in SHOUT_GAP ticks (unless it matters).
+static func _shout(sim: RefCounted, npc: Dictionary, line: String, important: bool = false) -> void:
+	var s: Dictionary = sim.state
+	if not important and s.tick - int(npc.get("last_shout", -10000)) < SHOUT_GAP: return
+	npc.last_shout = s.tick
+	Law()._say(sim, npc.id, line)
+
 static func _stand_down(s: Dictionary, npc: Dictionary) -> void:
 	npc.arrest = {}
 	npc.cover_cycle = {}
@@ -216,8 +243,12 @@ static func engage(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: A
 		_stand_down(s, npc)
 		return
 	if not _hands_ok(s, npc) or Limbs_crawling(s, npc):
-		# A shot-up sheriff falls back and stops fighting.
-		npc.cover_cycle = {"phase": "hide", "since": s.tick, "ammo": 0, "cover": cell.duplicate(), "peek_to": []}
+		# A shot-up sheriff can't fight on: he binds his wound if he can, then leaves it to the others.
+		if Bleeding.bleeding(npc) and Inventory.amount(s, int(npc.id), "bandage") > 0 and npc.get("bandaging", {}).is_empty():
+			Bleeding.begin(s, npc)
+		if npc.get("bandaging", {}).is_empty():
+			_shout(sim, npc, "I'm hit! I'm out!", true)
+			_stand_down(s, npc)
 		return
 	var cycle: Dictionary = npc.get("cover_cycle", {})
 	if cycle.is_empty():
@@ -226,10 +257,9 @@ static func engage(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: A
 	var lethal: bool = bool(alert.get("lethal", false))
 	var holding: bool = str(alert.phase) == "hold"
 	npc.status = "Shooting to kill" if lethal else ("Holding the gunman at gunpoint" if holding else "Taking cover and returning fire")
-	# Shout now and then.
-	if s.tick % 70 == int(npc.id) % 70:
-		var line: String = "That's it! No more warnings!" if lethal else ("Put the gun down. Now." if holding else ["Drop the weapon!", "Stop shooting!", "Put it down, I won't ask again!"][(int(npc.id) + s.tick / 70) % 3])
-		Law()._say(sim, npc.id, line)
+	# A call now and then (not a constant stream): each sheriff at most once in SHOUT_GAP ticks.
+	if s.tick % 30 == int(npc.id) % 30 and s.tick - int(npc.get("last_shout", -10000)) >= SHOUT_GAP * 3:
+		_shout(sim, npc, "That's it! No more warnings!" if lethal else ("Put the gun down. Now." if holding else ["Drop the weapon!", "Stop shooting!", "Put it down, I won't ask again!"][(int(npc.id) + s.tick / 70) % 3]))
 	var age: int = s.tick - int(cycle.since)
 	match str(cycle.phase):
 		"hide":
@@ -237,9 +267,13 @@ static func engage(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: A
 			if cycle.cover.is_empty() or not Cover.is_cover(s, cycle.cover):
 				# Already behind something the gunman cannot see past: stay put and work from here.
 				if Cover.is_cover(s, cell) and not Cover.line_clear(s, cell, player, true, false): cycle.cover = cell.duplicate()
-				else: cycle.cover = find_cover(s, cell, player)   # caught in the open: get behind something, fast
+				else: cycle.cover = find_cover(s, cell, player, false, cycle.get("blocked", []))   # caught in the open: get behind something, fast
 			if not cycle.cover.is_empty() and cell != cycle.cover:
 				_run_to(s, npc, cycle.cover)
+				if npc.path.is_empty() and s.entities[str(npc.id)].cell != cycle.cover:
+					# No way to that cover: forget it and pick another (instead of standing frozen).
+					cycle.blocked = cycle.cover.duplicate()
+					cycle.cover = []
 				return
 			# Hit and bleeding: bind the wound here, behind cover, before anything else.
 			if Bleeding.bleeding(npc) and Inventory.amount(s, int(npc.id), "bandage") > 0 and Bleeding.begin(s, npc):
@@ -255,6 +289,24 @@ static func engage(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: A
 			if holding:
 				return    # no shooting at someone who has stopped
 			if age >= HIDE_TICKS:
+				var distance: float = Vector2(player[0] - cell[0], player[1] - cell[1]).length()
+				# Out of reach of his shotgun: close in, cover to cover, or straight in at a crouch.
+				if distance > SHOOT_RANGE and _may_move(s, alert, npc):
+					var nearer: Array = next_cover(s, cell, player)
+					if nearer.is_empty(): nearer = _toward(s, cell, player, SHOOT_RANGE - 3)
+					if not nearer.is_empty():
+						_start_advance(s, alert, npc, cycle, nearer, "Closing in on the gunman")
+						return
+				# The gunman is down behind cover: someone works round the side to get a clear shot.
+				var flanker: int = int(alert.get("flanker", 0))
+				if not Cover.player_exposed(s) and (flanker == 0 or flanker == int(npc.id) or not _is_engaged(s, flanker)) and _may_move(s, alert, npc):
+					var side: Array = _flank_spot(s, cell, player)
+					if not side.is_empty():
+						alert.flanker = int(npc.id)
+						cycle.flank = true
+						_start_advance(s, alert, npc, cycle, side, "Working round the side")
+						_shout(sim, npc, ["I'll go round!", "Flanking left!", "Keep him busy, I'm going round!"][int(npc.id) % 3], true)
+						return
 				var corner: Array = Cover.peek_cell(s, cell, Vector2(player[0] - cell[0], player[1] - cell[1])) if not cycle.cover.is_empty() else cell.duplicate()
 				if cycle.cover.is_empty(): corner = cell.duplicate()
 				var no_view: bool = corner.is_empty() or not Cover.line_clear(s, corner, player, false, Cover.player_low(s))
@@ -303,6 +355,14 @@ static func engage(sim: RefCounted, npc: Dictionary, arrest: Dictionary, cell: A
 		"advance":
 			# Low and slow between covers; back to hiding on arrival (or if it takes too long).
 			var arrived: bool = cell == cycle.target
+			if arrived and bool(cycle.get("flank", false)):
+				# Round the side: a clear line past the gunman's cover. Shoot from here.
+				cycle.flank = false
+				cycle.phase = "peek"
+				cycle.peek_to = cell.duplicate()
+				cycle.since = s.tick
+				if int(alert.get("mover", 0)) == int(npc.id): alert.mover = 0
+				return
 			if arrived or age > 150 or (Bleeding.bleeding(npc) and Inventory.amount(s, int(npc.id), "bandage") > 0):
 				cycle.phase = "hide"
 				cycle.cover = cycle.target.duplicate() if arrived and Cover.is_cover(s, cycle.target) else []
@@ -326,6 +386,46 @@ static func _may_move(s: Dictionary, alert: Dictionary, npc: Dictionary) -> bool
 	var mover: int = int(alert.get("mover", 0))
 	var free: bool = mover == 0 or mover == int(npc.id) or s.tick > int(alert.get("mover_until", 0))
 	return quiet and free
+
+static func _start_advance(s: Dictionary, alert: Dictionary, npc: Dictionary, cycle: Dictionary, target: Array, status: String) -> void:
+	cycle.phase = "advance"
+	cycle.target = target.duplicate()
+	cycle.since = s.tick
+	alert.mover = int(npc.id)
+	alert.mover_until = s.tick + 90
+	npc.status = status
+
+static func _is_engaged(s: Dictionary, id: int) -> bool:
+	return str(s.get("residents", {}).get(str(id), {}).get("arrest", {}).get("phase", "")) == "engage"
+
+## A walkable cell `reach` cells from the gunman along the line towards `from` (the nearest open
+## cell to that point). [] if none.
+static func _toward(s: Dictionary, from: Array, target: Array, reach: int) -> Array:
+	var v := Vector2(from[0] - target[0], from[1] - target[1])
+	if v.length() < 0.5: return []
+	var p := Vector2(target[0], target[1]) + v.normalized() * float(reach)
+	for r in range(0, 4):
+		for d in [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]:
+			var c: Array = [roundi(p.x) + d[0] * r, roundi(p.y) + d[1] * r]
+			if World.walkable(s, c): return c
+	return []
+
+## A spot round the side of the gunman's cover: 5-10 cells from them, with a clear line to them
+## even while they crouch behind it, and reachable. The nearest to the sheriff. [] if none.
+static func _flank_spot(s: Dictionary, from: Array, target: Array) -> Array:
+	var best: Array = []
+	var best_score := 1.0e9
+	for dy in range(-FLANK_FAR, FLANK_FAR + 1, 2):
+		for dx in range(-FLANK_FAR, FLANK_FAR + 1, 2):
+			var c: Array = [target[0] + dx, target[1] + dy]
+			var d: float = Vector2(dx, dy).length()
+			if d < FLANK_NEAR or d > FLANK_FAR or not World.walkable(s, c): continue
+			if not Cover.line_clear(s, c, target, false, true): continue   # still blocked by their cover
+			var score: float = Vector2(c[0] - from[0], c[1] - from[1]).length()
+			if score < best_score: best_score = score; best = c
+	if best.is_empty(): return best
+	var route = load("res://sim/movement/navigation.gd").request_path(s, from, best)
+	return best if route.ok and route.path.size() <= 30 else []
 
 ## The next cover towards the gunman: hidden from them, with a corner that sees them, nearer than
 ## where the sheriff is now (but not on top of them), and a short walk away. [] if there is none.
@@ -381,14 +481,14 @@ static func _run_to(s: Dictionary, npc: Dictionary, goal: Array) -> void:
 
 ## The best cover near `from` against a shooter at `target`: a cover cell the shooter cannot see,
 ## with a corner from which the shooter can be seen. [] if there is none.
-static func find_cover(s: Dictionary, from: Array, target: Array, avoid_current: bool = false) -> Array:
+static func find_cover(s: Dictionary, from: Array, target: Array, avoid_current: bool = false, blocked: Array = []) -> Array:
 	var best: Array = []
 	var best_score := 1.0e9
 	for dy in range(-COVER_SEARCH, COVER_SEARCH + 1):
 		for dx in range(-COVER_SEARCH, COVER_SEARCH + 1):
 			var cell: Array = [from[0] + dx, from[1] + dy]
 			if avoid_current and dx == 0 and dy == 0: continue
-			if not Cover.is_cover(s, cell): continue
+			if cell == blocked or not Cover.is_cover(s, cell): continue
 			var look: Vector2 = Vector2(target[0] - cell[0], target[1] - cell[1])
 			if look.length() > SHOOT_RANGE or look.length() < 3.0: continue
 			if Cover.line_clear(s, cell, target, true, false): continue   # still in the open: not cover from them
@@ -418,7 +518,9 @@ static func fire_at_player(sim: RefCounted, npc: Dictionary, from: Array, lethal
 		return
 	var chance: int = (KILL_HIT_CHANCE if lethal else WOUND_HIT_CHANCE) - int(maxf(0.0, distance - 5.0) * 3.0)
 	if sim.random_int("gunfire", 0, 99) < chance:
-		Wounds.shoot(sim, int(s.player), player, direction, KILL_STRENGTH if lethal else WOUND_STRENGTH, lethal)
+		# Not to the death: aim to bring them down (legs), or to make them drop it if they're firing back.
+		var aim: String = "gun_arm" if s.tick - int(s.get("shotgun", {}).get("last_shot", -1000)) < 120 else "legs"
+		Wounds.shoot(sim, int(s.player), player, direction, KILL_STRENGTH if lethal else WOUND_STRENGTH, lethal, aim)
 		s.player_control.notice = "%s shoots you!" % s.entities[str(npc.id)].name
 	elif s.has("shotgun"):
 		s.shotgun.effects.append({"kind": "ground", "cell": [player[0] + sim.random_int("gunfire", -1, 1), player[1] + sim.random_int("gunfire", -1, 1)], "tick": s.tick, "dir": shot.duplicate()})
