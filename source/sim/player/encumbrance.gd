@@ -32,7 +32,8 @@ static func load_tenths(s: Dictionary, id: int) -> int:
 
 static func limit_tenths(s: Dictionary, id: int) -> int:
 	var worn: Dictionary = Outfits.worn(s, id) if s.has("entities") and s.entities.has(str(id)) else {}
-	return BASE_LIMIT + (PACK_BONUS if not str(worn.get("pack", "")).is_empty() else 0)
+	var fit: int = load("res://sim/player/activities.gd").carry_bonus(s) if id == int(s.get("player", -1)) else 0   # training at home
+	return BASE_LIMIT + (PACK_BONUS if not str(worn.get("pack", "")).is_empty() else 0) + fit
 
 ## 0 light, 1 heavy, 2 overloaded (no running), 3 crushing.
 static func band(s: Dictionary, id: int = -1) -> int:

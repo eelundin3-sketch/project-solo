@@ -36,6 +36,7 @@ static func kind_of_place(s: Dictionary, building: Dictionary) -> String:
 	if building.is_empty(): return ""
 	if building.kind in SHOP_KINDS: return "" if _open_hours(s) else "closed"
 	if building.kind != "home": return ""
+	if bool(building.get("player_house", false)): return ""   # your own house
 	for town in s.get("settlements", {}).values():
 		if int(town.get("home", 0)) == int(building.id): return ""   # the common lodge
 	for household in s.get("households", {}).values():

@@ -313,7 +313,7 @@ static func install_building(s: Dictionary, id: int) -> void:
 	for y in range(rect.position.y, rect.end.y):
 		for x in range(rect.position.x, rect.end.x):
 			if exterior_wall(entity, [x, y], entity.kind):
-				if [x, y] != entity.door:
+				if [x, y] != entity.door and not [x, y] in entity.get("back_doors", []):
 					s.world.building_walls[cell_key([x, y])] = id
 	entity.interior_walls = partitions_for(entity, rect)
 	for cell in entity.interior_walls:

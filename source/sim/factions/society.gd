@@ -186,7 +186,7 @@ static func free_home(s: Dictionary, town: int) -> int:
 	for household in s.get("households", {}).values(): taken[int(household.get("home", 0))] = true
 	var best := 0
 	for entity in World().of_kind(s, "home"):
-		if int(entity.settlement) != town or taken.has(int(entity.id)) or "lodge" in String(entity.name).to_lower(): continue
+		if int(entity.settlement) != town or taken.has(int(entity.id)) or "lodge" in String(entity.name).to_lower() or bool(entity.get("player_house", false)): continue
 		if best == 0 or int(entity.id) < best: best = int(entity.id)
 	return best
 

@@ -37,6 +37,8 @@ static func install(s: Dictionary, building: Dictionary) -> void:
 		var top: int = footprint[1]
 		var right: int = left + footprint[2]
 		match building.kind:
+			"home" when bool(building.get("player_house", false)):
+				building.furniture = load("res://sim/settlement/player_house.gd").furniture(building)
 			"home" when building.has("house_type"):
 				building.furniture = []   # placed below, after the beds, to suit the house
 			"home":
@@ -106,8 +108,10 @@ static func install(s: Dictionary, building: Dictionary) -> void:
 					{"kind": "lamp", "rect": [right-2, top+1, 1, 1], "rot": 2},
 				]
 	for item in building.fixtures: _occupy(s, item.rect, building.id)
-	for item in building.furniture: _occupy(s, item.rect, building.id)
-	if expanded and building.kind == "home":
+	var open_kinds: Array = load("res://sim/settlement/player_house.gd").OPEN_KINDS
+	for item in building.furniture:
+		if not str(item.kind) in open_kinds: _occupy(s, item.rect, building.id)   # the deck and the workout gear: you walk among them
+	if expanded and building.kind == "home" and not bool(building.get("player_house", false)):
 		# Beds go in last so they can pick the best wall-hugging spot, head against the wall.
 		var beds: int = clampi(_bed_count(s, building), 1, 6)
 		for index in range(beds):

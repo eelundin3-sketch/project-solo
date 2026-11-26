@@ -56,6 +56,7 @@ const Bandits = preload("res://sim/factions/bandits.gd")
 const OutlawArrest = preload("res://sim/law/outlaw_arrest.gd")
 const Notoriety = preload("res://sim/law/notoriety.gd")
 const Investigation = preload("res://sim/law/investigation.gd")
+const Activities = preload("res://sim/player/activities.gd")
 const Bounties = preload("res://sim/law/bounties.gd")
 const Capital = preload("res://sim/settlement/capital.gd")
 const Reinforcements = preload("res://sim/law/reinforcements.gd")
@@ -115,6 +116,7 @@ func start_game(population: int = 5) -> void:
 	FamilyEconomy.ensure(state)
 	Chests.ensure_all(self)
 	Capital.ensure(self)   # Dustvale, the capital: the town house, the governor, the saloon and its barkeep (before the woods, which keep clear of buildings)
+	load("res://sim/settlement/player_house.gd").ensure(self)   # your own house, west side of Alder Hollow (before the woods too)
 	World.lay_out_woodlands(self)
 	for town in state.settlements.values(): Professions.assign(state, town.id)
 	Sheriff.ensure(self)
@@ -261,6 +263,7 @@ func step() -> void:
 		Needs.update(state)
 		Look.update(state)
 		Sleep.update(state)
+		Activities.update(self)   # at home: a drink, a rest, a workout (activities.gd)
 		Hotbar.update(state)
 		Shotgun.update(self)
 		Probe.mark("player+needs+shotgun")
@@ -319,6 +322,15 @@ func _captive_talk(entry: Dictionary) -> bool:
 	return maxi(absi(me[0] - at[0]), absi(me[1] - at[1])) <= 4
 
 func apply_command(entry: Dictionary) -> void:
+	# At home doing something (a set of squats, a drink, a rest): F stops it; moving or anything else
+	# winds it down first (the bar goes back on the rack).
+	if state.has("player_control") and Activities.active(state) and entry.kind in PLAYER_ACTS:
+		if entry.kind == "interact": Activities.use(self)
+		else: Activities.stop(state)
+		return
+	# F next to something in your house: use it.
+	if entry.kind == "interact" and state.has("player_control") and not Bandits.captive(state) and not Activities.nearby(state).is_empty():
+		if Activities.use(self): return
 	# Someone lying on the ground cannot act until they are back on their feet.
 	if state.has("brawl") and entry.kind in PLAYER_ACTS and entry.kind != "surrender" and Bandits.captive(state) and not _captive_talk(entry):
 		state.player_control.notice = "You're tied up. F: work at the ropes when the watch is away."
@@ -614,6 +626,7 @@ func restore(snapshot_data: Dictionary) -> void:
 	Light.ensure_lamps(self)   # street lamps for saves made before they existed
 	Bandits.ensure_camp(self)  # and the bandit camp
 	Capital.ensure(self)       # and the capital's town house and saloon
+	load("res://sim/settlement/player_house.gd").ensure(self)   # and your house
 	warm_scripts()
 	if state.has("routes"):
 		BodyHealth.initialize(state)

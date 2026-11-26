@@ -264,6 +264,15 @@ static func prompt(s: Dictionary,preferred: int = 0) -> String:
 	for part in s.player_health.parts.values():
 		if part.bleeding: warning="BLEEDING · Press H.  "; break
 	if not pc.work.is_empty(): return warning+"F: stop %s · %d/%d" % [pc.work.kind,pc.work.progress,pc.work.ticks]
+	var Activities = load("res://sim/player/activities.gd")
+	if Activities.active(s):
+		var act: Dictionary = Activities.stage_of(s)
+		if act.kind in Activities.WORKOUTS: return warning+"%s · rep %d of %d · F: stop" % [Activities.LABELS[act.kind].split(" (")[0], mini(Activities.REPS, int(act.rep) + (1 if act.stage == "rep" else 0)), Activities.REPS]
+		return warning+"F: get up"
+	var piece: Dictionary = Activities.nearby(s)
+	if not piece.is_empty():
+		var why: String = Activities.problem(s, str(piece.kind))
+		return warning+("F: %s" % Activities.LABELS[piece.kind] if why.is_empty() else why)
 	if pc.held_quantity>0: return warning+"F: put down %d %s · I: stow" % [pc.held_quantity,pc.held_item]
 	var id: int=target(s,preferred)
 	return warning+("F: interact with "+s.entities[str(id)].name if id!=0 else pc.notice)
