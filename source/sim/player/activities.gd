@@ -105,6 +105,21 @@ static func start(sim: RefCounted, index: int, kind: String) -> void:
 	pc.notice = {"squat": "You step under the bar.", "bench": "You sit on the end of the bench.", "deadlift": "You step up to the bar.",
 		"pullup": "You reach for the bar.", "fridge": "You open the fridge.", "rest": "You lie down for a while. F to get up.", "sofa": "You sink into the sofa. F to get up."}[kind]
 
+## A new game begins at home, already doing one of the things there. `choice` picks which (the
+## game passes a fresh number each new game; the same choice always gives the same start).
+const HOME_STARTS := ["squat", "bench", "deadlift", "pullup", "fridge", "rest", "sofa"]
+static func begin_at_home(sim: RefCounted, choice: int) -> String:
+	var s: Dictionary = sim.state
+	var house: Dictionary = PlayerHouse.house(s)
+	if house.is_empty() or not s.has("player"): return ""
+	var kind: String = HOME_STARTS[posmod(choice, HOME_STARTS.size())]
+	var items: Array = house.get("furniture", [])
+	for index in range(items.size()):
+		if PIECES.get(str(items[index].kind), "") == kind:
+			start(sim, index, kind)
+			return kind if active(s) else ""
+	return ""
+
 ## F again, or moving: wind down (the bar goes back first), or just get up.
 static func stop(s: Dictionary) -> void:
 	var act: Dictionary = current(s)

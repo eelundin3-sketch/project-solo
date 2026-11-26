@@ -2,6 +2,7 @@ extends Node2D
 const Simulation = preload("res://sim/core/simulation.gd")
 const Clock = preload("res://sim/core/sim_clock.gd")
 const Save = preload("res://sim/persistence/save_manager.gd")
+const Activities = preload("res://sim/player/activities.gd")
 const Settings = preload("res://app/input_settings.gd")
 const PlayerPanels = preload("res://view/ui/player_panels.gd")
 const Health = preload("res://sim/combat/body_health.gd")
@@ -161,13 +162,16 @@ func _maybe_open_menu() -> void:
 	if get_tree().current_scene != self: return
 	if Engine.has_meta("skip_title"):
 		Engine.remove_meta("skip_title")   # "New game" from the death screen goes straight in
+		_begin_at_home()
 		return
 	menu_active = true
 	menu = MainMenu.new()
 	var newest: Dictionary = SaveSlots.newest(save_dir, [save_path])
 	if not newest.is_empty(): menu.continue_text = SaveSlots.describe(newest.info)
 	add_child(menu)
-	menu.start_requested.connect(_start_from_menu)
+	menu.start_requested.connect(func() -> void:
+		_begin_at_home()
+		_start_from_menu())
 	menu.quit_requested.connect(func() -> void: get_tree().quit())
 	menu.continue_requested.connect(func() -> void:
 		handle_action("load")
@@ -188,6 +192,11 @@ func _set_hud_visible(shown: bool) -> void:
 				create_tween().tween_property(node, "modulate:a", 1.0, 0.6)
 	$DebugHUD.visible = shown
 	if not shown: player_panels.show_mode("")
+
+## A new game starts in your house, in the middle of one of the things there (a workout, a drink
+## from the fridge, resting on the bed, the sofa): a different one each new game.
+func _begin_at_home() -> void:
+	Activities.begin_at_home(simulation, int(Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system())))
 
 ## A slow drift over the countryside around the first town.
 func _menu_camera(t: float) -> Vector2:

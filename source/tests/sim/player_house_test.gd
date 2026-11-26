@@ -45,6 +45,20 @@ func _initialize() -> void:
 	check(out_back.ok and out_back.path.size() < 8, "...and out the back door onto the terrace (%d steps)" % out_back.path.size())
 	check(World.inside_building(s, terrace) == 0, "The terrace is outside")
 	check(Nav.request_path(s, [house.door[0], house.door[1] + 1], store).ok, "You can walk from your door into town")
+	# A new game starts at home, mid-activity: every choice is one of the house's things, and you're there.
+	var Activities = load("res://sim/player/activities.gd")
+	var area := Rect2i(l, t - PlayerHouse.TERRACE, PlayerHouse.W, PlayerHouse.H + PlayerHouse.TERRACE)
+	var seen: Dictionary = {}
+	for choice in range(Activities.HOME_STARTS.size()):
+		var kind: String = Activities.begin_at_home(sim, choice)
+		var me: Array = s.entities[str(s.player)].cell
+		check(kind == Activities.HOME_STARTS[choice] and Activities.active(s), "A new game can start with: %s (got '%s')" % [Activities.HOME_STARTS[choice], kind])
+		check(area.has_point(Vector2i(me[0], me[1])), "...at home (%s at %s)" % [kind, str(me)])
+		seen[kind] = true
+		s.player_control.activity = {}
+	check(seen.size() == Activities.HOME_STARTS.size(), "Every home start works")
+	check(Activities.begin_at_home(sim, 1000003) == Activities.HOME_STARTS[1000003 % Activities.HOME_STARTS.size()], "Any number picks one")
+	s.player_control.activity = {}
 	# You can sleep in its bed.
 	s.player_needs.fatigue = 90
 	check(load("res://sim/player/sleep.gd").problem(s, int(house.id), house.furniture.find(bed)) == "", "You can sleep in your bed")
