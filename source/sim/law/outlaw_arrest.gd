@@ -389,6 +389,11 @@ static func _sheriff_fights(sim: RefCounted, sheriff: Dictionary, bandit: Dictio
 	if gap > 14.0:
 		if s.tick >= int(c.next_step): _walk(s, sheriff, c, him, 3)
 		return
+	if gap > 1.5 and not Cover.line_clear(s, me, him):
+		# No line on him (he's holed up behind a wall): leave cover and work in until there is one,
+		# rather than firing into the wall all day.
+		if s.tick >= int(c.next_step): _walk(s, sheriff, c, him, 2)
+		return
 	if s.tick - int(c.get("last_shot", -1000)) >= SHOT_EVERY + int(sheriff.id) % 7:
 		c.last_shot = s.tick
 		_shoot(sim, sheriff, me, bandit, him, SHERIFF_HIT, false)

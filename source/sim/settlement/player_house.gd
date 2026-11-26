@@ -25,7 +25,9 @@ static func is_player_house(building: Dictionary) -> bool:
 
 static func ensure(sim: RefCounted) -> void:
 	var s: Dictionary = sim.state
-	if s.has("player_home") or not s.has("settlements") or not s.settlements.has("1") or not s.has("residents"): return
+	# Only for a full game (with households): a bare test village has no use for it, and the chest
+	# fill below must not add goods to such a world on load.
+	if s.has("player_home") or not s.has("settlements") or not s.settlements.has("1") or not s.has("residents") or not s.has("households"): return
 	var door: Array = _plot(s)
 	if door.is_empty(): return
 	var left: int = int(door[0]) - W / 2
