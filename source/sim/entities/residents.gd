@@ -83,7 +83,9 @@ static func update(sim: RefCounted) -> void:
 			_act(sim, npc, cadence, step)
 			if own_pace:
 				var now: Array = s.entities[str(npc.id)].cell
-				npc.walk_next = s.tick + (Pace.delay(s, now, 2, npc, "stride_carry") if now != was else 2)
+				# Standing still (sleeping, working, eating), they're back on the even ticks the routine
+				# actions count on (sleep recovers every 10th tick, and so on).
+				npc.walk_next = s.tick + Pace.delay(s, now, 2, npc, "stride_carry") if now != was else s.tick + 2 - s.tick % 2
 
 ## One move or action of a villager's routine (on their step).
 static func _act(sim: RefCounted, npc: Dictionary, cadence: int, step: int) -> void:
