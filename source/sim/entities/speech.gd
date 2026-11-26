@@ -18,12 +18,31 @@ const LINES: Dictionary = {
 	"greet_scruffy": ["You look like you've been dragged through a hedge.", "Good grief, have a wash, stranger.", "Is that blood on you?", "Keep your distance, you're filthy.", "There's a well by the storehouse, you know."],
 	"greet_cold": ["You've got a nerve, showing your face here.", "Hmph.", "Keep walking.", "We know what you did.", "Don't you come near my family."],
 	"greet_warm": ["Good to see you again, friend!", "There you are! How have you been?", "Ah, a friendly face.", "Come by for supper some time.", "Always welcome here."],
-	"greet_player": ["Morning, traveller.", "Afternoon.", "Evening, stranger.", "Hello there.", "Good to see a new face.", "Keep your boots dry, friend.", "Quiet day, isn't it?"],
+	"greet_player": ["Hello there.", "Good to see a new face.", "Keep your boots dry, friend."],
+	"greet_morning": ["Morning, traveller.", "Good morning.", "Early start, is it?", "Morning. Sleep well?"],
+	"greet_day": ["Afternoon.", "Good day to you.", "Quiet day, isn't it?", "Warm one today."],
+	"greet_evening": ["Evening, stranger.", "Good evening.", "Getting late, isn't it?", "Evening. Long day?"],
+	"greet_night": ["You're up late.", "Bit late to be wandering about.", "Shouldn't you be abed?"],
 	"smalltalk": ["Looks like rain later.", "The rye's coming along nicely.", "Prices at the market are odd today.", "Did you hear? A trader's been walking the road.", "I could do with a rest.", "Timber's going quickly this week.", "My back aches from the work.", "Have you seen the sheriff about?", "The days are getting shorter.", "Bread's ready soon, I think.", "That new house is coming along.", "Strange folk, these travellers."],
 	"reply": ["Aye, I'd say so.", "Hah, you're not wrong.", "So I've heard.", "Don't get me started.", "Hmm, fair enough.", "Mm. Take care now.", "Tell me about it."],
 	"scared": ["Gunshots! Get down!", "Somebody is shooting!", "Take cover!", "Run for it!", "Oh no, oh no..."],
+	"drought": ["No rain in days. The rye's burning up.", "If it doesn't rain soon, there'll be nothing to cut.", "Dust and more dust. The fields are cracking.", "I've never seen the ground this dry."],
+	"rain_relief": ["Rain at last! The fields needed that.", "Smell that? Rain on dry ground.", "That rain came just in time.", "The rye will pick up now, thank heaven."],
 	"trader_pitch": ["Cheap planks, going east!", "Fine timber, fair prices!", "Best food on the Moss Road!"],
 }
+
+## A greeting for the part of the day, now and then a plain one.
+static func _greeting(sim: RefCounted) -> String:
+	if sim.random_int("speech", 0, 3) == 0: return "greet_player"
+	return "greet_" + str(load("res://sim/world/day_clock.gd").phase(sim.state))
+
+## Farmers talk about the weather when it matters: drought after 5 dry days, relief when it breaks.
+static func weather_topic(s: Dictionary, npc: Dictionary) -> String:
+	if str(npc.get("occupation", "")) != "Farmer": return "smalltalk"
+	var region: Dictionary = load("res://sim/world/weather.gd").of_town(s, int(npc.settlement))
+	if int(region.get("relief_until", 0)) > int(s.tick): return "rain_relief"
+	if int(region.get("dry_days", 0)) >= 5: return "drought"
+	return "smalltalk"
 
 static func say(sim: RefCounted, speaker: int, topic: String, extra: String = "") -> void:
 	var s: Dictionary = sim.state
@@ -40,7 +59,8 @@ static func say(sim: RefCounted, speaker: int, topic: String, extra: String = ""
 
 static func _idle(s: Dictionary, npc: Dictionary) -> bool:
 	return npc.health > 0 and npc.get("knock", {}).is_empty() and npc.get("brawl", {}).is_empty() and npc.get("attack", {}).is_empty() \
-		and npc.get("sleeping", {}).is_empty() and npc.get("migration", {}).is_empty() and s.tick >= int(npc.get("talk_until", 0)) and npc.occupation != "Trader"
+		and npc.get("sleeping", {}).is_empty() and npc.get("migration", {}).is_empty() and s.tick >= int(npc.get("talk_until", 0)) and npc.occupation not in ["Trader", "Bandit"] \
+		and npc.get("cover_cycle", {}).is_empty() and npc.get("fear", {}).is_empty() and npc.get("arrest", {}).is_empty() and npc.get("reporting", {}).is_empty() and npc.get("collar", {}).is_empty()   # nobody chats about the weather mid-gunfight
 
 ## Every 120 ticks: expire old bubbles, let two idle neighbours chat, and greet the player.
 static func update(sim: RefCounted) -> void:
@@ -64,7 +84,7 @@ static func update(sim: RefCounted) -> void:
 			if b.id <= a.id or b.settlement != a.settlement: continue
 			var cell_b: Array = s.entities[str(b.id)].cell
 			if absi(cell_a[0] - cell_b[0]) > 4 or absi(cell_a[1] - cell_b[1]) > 4: continue
-			say(sim, a.id, "smalltalk")
+			say(sim, a.id, weather_topic(s, a))
 			say(sim, b.id, "reply")
 			load("res://sim/entities/gossip.gd").chat(sim, a, b)   # and they pass on the news
 			a.talk_until = s.tick + 900
@@ -73,6 +93,7 @@ static func update(sim: RefCounted) -> void:
 			break
 	var player: Array = s.entities[str(s.player)].cell
 	for npc in talkers:
+		if npc.occupation == "Bandit": continue   # bandits have their own words for you (bandits.gd)
 		if npc.occupation == "Sheriff" and sim.random_int("speech", 0, 99) < 40: continue
 		var cell: Array = s.entities[str(npc.id)].cell
 		if absi(cell[0] - player[0]) <= 3 and absi(cell[1] - player[1]) <= 3 and s.tick >= int(npc.get("greeted_tick", 0)):
@@ -80,7 +101,7 @@ static func update(sim: RefCounted) -> void:
 			# What they remember of you colours the greeting (society.gd: opinion).
 			var feeling: int = load("res://sim/factions/society.gd").opinion(s, int(npc.id), int(s.player))
 			var scruffy: bool = load("res://sim/player/look.gd").score(s) <= -40   # filthy or bloodied (look.gd)
-			say(sim, npc.id, "greet_cold" if feeling <= -30 else ("greet_warm" if feeling >= 40 else ("sheriff_warn" if scruffy and npc.occupation == "Sheriff" else ("greet_scruffy" if scruffy else "greet_player"))))
+			say(sim, npc.id, "greet_cold" if feeling <= -30 else ("greet_warm" if feeling >= 40 else ("sheriff_warn" if scruffy and npc.occupation == "Sheriff" else ("greet_scruffy" if scruffy else _greeting(sim)))))
 			npc.greeted_tick = s.tick + 3000
 			npc.talk_until = s.tick + 300
 			break

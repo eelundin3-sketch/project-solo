@@ -1,4 +1,8 @@
 extends RefCounted
+const Pace = preload("res://sim/movement/pace.gd")
+const DayClock = preload("res://sim/world/day_clock.gd")
+const Capital = preload("res://sim/settlement/capital.gd")
+const Reinforcements = preload("res://sim/law/reinforcements.gd")
 const World = preload("res://sim/world/world_db.gd")
 const Inventory = preload("res://sim/inventory/inventory_store.gd")
 const Jobs = preload("res://sim/jobs/job_board.gd")
@@ -40,6 +44,8 @@ static func update(sim: RefCounted) -> void:
 	for key in s.residents:
 		var npc: Dictionary = s.residents[key]
 		if s.tick < int(npc.get("impact_until", 0)): continue
+		if int(npc.get("bandit", 0)) != 0: continue   # bandits live by their own rules (bandits.gd)
+		if not npc.get("reinforcing", {}).is_empty() and Reinforcements.busy(npc): continue   # running for help, or on the road to help (reinforcements.gd)
 		if LocalCombat.busy(s, npc.id) or npc.health <= 0: continue
 		if Brawl.busy(s, npc): continue
 		if not npc.get("migration", {}).is_empty():
@@ -48,6 +54,7 @@ static func update(sim: RefCounted) -> void:
 		if not npc.get("serving", {}).is_empty(): continue   # minding a market tent for the player (stall_service.gd)
 		if not npc.get("bandaging", {}).is_empty(): continue   # binding a wound (bleeding.gd)
 		if not npc.get("reporting", {}).is_empty(): continue   # running to tell the sheriff (witness_reports.gd)
+		if not npc.get("collar", {}).is_empty() or not npc.get("search", {}).is_empty() or not npc.get("case", {}).is_empty(): continue   # the sheriff on an outlaw, a sighting or a case
 		if not npc.get("arrest", {}).is_empty():
 			if npc.has("sitting"): Sheriff.stand_up(s, npc)
 			continue   # making an arrest (law.gd)
@@ -67,22 +74,37 @@ static func update(sim: RefCounted) -> void:
 		if step > 2 and npc.job != 0 and Limbs.crawling(s, npc.id):
 			Jobs.release(s, npc.job, "CRAWLING")   # nobody works on their belly
 		if step > 2 and s.tick % step != 0: continue   # a limp or a crawl: far fewer steps
-		if s.tick % cadence == 0:
-			if npc.job != 0:
-				Jobs.advance_many(sim, npc.id, cadence / 2)
-			elif not npc.goal.is_empty():
-				var actions: int = cadence / 2 if step <= 2 else 1
-				var distance: int = mini(actions, npc.path.size())
-				if distance > 0 and npc.nav_revision != s.world.nav_revision and Nav.still_clear(s, npc.path):
-					npc.nav_revision = s.world.nav_revision   # the world changed elsewhere; this route is still open
-				if distance > 0 and npc.nav_revision == s.world.nav_revision:
-					s.entities[str(npc.id)].cell = npc.path[distance - 1]
-					npc.path = npc.path.slice(distance)
-					actions -= distance
-				if actions > 0:
-					if npc.goal == "rest" and npc.path.is_empty():
-						npc.fatigue = maxi(10, npc.fatigue - actions + 1)
-					_need_action(sim, npc)
+		# Townsfolk near the player step on their own timer: every 2 ticks off the roads, quicker on
+		# them (pace.gd: about 15% in a town street, 30% on the roads between towns, slower in mud).
+		var own_pace: bool = npc.fidelity == "detailed" and step <= 2
+		var due: bool = s.tick >= int(npc.get("walk_next", 0)) if own_pace else s.tick % cadence == 0
+		if due:
+			var was: Array = s.entities[str(npc.id)].cell
+			_act(sim, npc, cadence, step)
+			if own_pace:
+				var now: Array = s.entities[str(npc.id)].cell
+				# Standing still (sleeping, working, eating), they're back on the even ticks the routine
+				# actions count on (sleep recovers every 10th tick, and so on).
+				npc.walk_next = s.tick + Pace.delay(s, now, 2, npc, "stride_carry") if now != was else s.tick + 2 - s.tick % 2
+
+## One move or action of a villager's routine (on their step).
+static func _act(sim: RefCounted, npc: Dictionary, cadence: int, step: int) -> void:
+	var s: Dictionary = sim.state
+	if npc.job != 0:
+		Jobs.advance_many(sim, npc.id, cadence / 2)
+	elif not npc.goal.is_empty():
+		var actions: int = cadence / 2 if step <= 2 else 1
+		var distance: int = mini(actions, npc.path.size())
+		if distance > 0 and npc.nav_revision != s.world.nav_revision and Nav.still_clear(s, npc.path):
+			npc.nav_revision = s.world.nav_revision   # the world changed elsewhere; this route is still open
+		if distance > 0 and npc.nav_revision == s.world.nav_revision:
+			s.entities[str(npc.id)].cell = npc.path[distance - 1]
+			npc.path = npc.path.slice(distance)
+			actions -= distance
+		if actions > 0:
+			if npc.goal == "rest" and npc.path.is_empty():
+				npc.fatigue = maxi(10, npc.fatigue - actions + 1)
+			_need_action(sim, npc)
 
 ## Things a villager keeps on them rather than putting in the store.
 const KIT := ["bandage"]
@@ -104,8 +126,9 @@ static func _decide(sim: RefCounted, npc: Dictionary) -> void:
 	var s: Dictionary = sim.state
 	if npc.retry_at > s.tick:
 		return
-	# At night anyone with some tiredness goes to bed; by day only the exhausted lie down.
-	var sleepy: bool = (Needs.is_night(s) and npc.fatigue >= 20) or npc.fatigue >= 75
+	# After their own bedtime (21:00-22:00) anyone with some tiredness goes to bed; by day only the
+	# exhausted lie down (DayClock).
+	var sleepy: bool = (DayClock.bed_hours(s, npc) and npc.fatigue >= 20) or npc.fatigue >= 75
 	if npc.hunger >= 60 or npc.get("thirst", 0) >= 60 or sleepy:
 		if npc.job != 0:
 			Jobs.release(s, npc.job, "INTERRUPTED_FOR_NEEDS")
@@ -127,6 +150,8 @@ static func _decide(sim: RefCounted, npc: Dictionary) -> void:
 		return
 	if cargo(s, npc) > 0:
 		set_goal(s, npc, "deposit")
+	elif Capital.routine(sim, npc):
+		pass   # the capital's governor, barkeep and evening drinkers (capital.gd)
 	elif Professions.GATHERERS.has(npc.occupation):
 		Jobs.assign(s, npc.id)
 	elif npc.occupation == "Sheriff" and s.has("settlements"):
@@ -166,7 +191,7 @@ static func set_goal(s: Dictionary, npc: Dictionary, goal: String) -> void:
 		if plot.is_empty(): return
 		npc.garden_plot = plot.id
 		destination_cell = Households.garden_stance(plot)
-	var route := Nav.request_path(s, s.entities[str(npc.id)].cell, destination_cell if not destination_cell.is_empty() else World.Fixtures.interaction_cell(s, target))
+	var route := Nav.request_walk_path(s, s.entities[str(npc.id)].cell, destination_cell if not destination_cell.is_empty() else World.Fixtures.interaction_cell(s, target))
 	if not route.ok:
 		npc.status = goal + ": " + route.error_code
 		npc.retry_at = s.tick + 100
@@ -192,6 +217,12 @@ static func _need_action(sim: RefCounted, npc: Dictionary) -> void:
 	match npc.goal:
 		"desk":
 			Sheriff.sit(s, npc)
+		"seat":
+			Capital.sit(s, npc)
+		"bar":
+			npc.goal = ""
+			npc.status = "Tending the bar"
+			npc.work_pause_until = s.tick + 200
 		"patrol":
 			npc.goal = ""
 			npc.status = "On patrol, watching the square"
@@ -245,11 +276,11 @@ static func _need_action(sim: RefCounted, npc: Dictionary) -> void:
 					npc.goal = ""
 					return
 				s.entities[str(npc.id)].cell = bed.lie.duplicate()
-				npc.sleeping = {"lie": bed.lie, "approach": bed.approach, "rot": bed.rot, "bed_rect": bed.get("rect", []), "night": Needs.is_night(s), "since": s.tick}
+				npc.sleeping = {"lie": bed.lie, "approach": bed.approach, "rot": bed.rot, "bed_rect": bed.get("rect", []), "night": DayClock.bed_hours(s, npc), "since": s.tick}
 				npc.status = "Sleeping in bed"
 			if s.tick % 10 == 0: npc.fatigue = maxi(0, npc.fatigue - 1)
-			var minute: int = (s.tick / 10) % 1440
-			var morning: bool = minute >= 360 and minute < 1230
+			# A night's sleep ends at the person's own waking time, 06:00-07:00.
+			var morning: bool = not DayClock.bed_hours(s, npc)
 			if (npc.sleeping.night and morning) or (not npc.sleeping.night and npc.fatigue <= 15) or npc.hunger >= 90 or npc.get("thirst", 0) >= 90:
 				Households.wake(s, npc)
 		"rest":

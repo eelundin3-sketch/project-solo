@@ -33,7 +33,10 @@ static func dress(s: Dictionary) -> void:
 		var entity: Dictionary = s.entities[str(npc.id)]
 		if not String(entity.name).begins_with("Sheriff "):
 			var parts: PackedStringArray = String(entity.name).split(" ")
-			entity.name = "Sheriff " + parts[parts.size() - 1]
+			var title: String = "Sheriff " + parts[parts.size() - 1]
+			# Names stay unique: a second sheriff with the same surname keeps his first name too.
+			if load("res://sim/entities/names.gd").used(s).has(title): title = "Sheriff " + String(entity.name)
+			entity.name = title
 			load("res://sim/entities/names.gd").used(s)[entity.name] = true   # so reloads see the same pool
 		if not npc.get("sheriff_dressed", false):
 			Outfits.dress(s, npc.id, Outfits.SHERIFF)
@@ -87,7 +90,7 @@ static func roster(s: Dictionary, town: int) -> Array:
 	ids.sort()
 	return ids
 
-## Tops every town up to two sheriffs (three in a bigger town) with new residents who live at the
+## Tops every town up to three sheriffs (five in the capital, capital.gd) with new residents who live at the
 ## office, so the people already there keep their trades.
 static func ensure(sim: RefCounted) -> void:
 	var s: Dictionary = sim.state
@@ -100,8 +103,8 @@ static func ensure(sim: RefCounted) -> void:
 		var others := 0
 		for npc in s.residents.values():
 			if npc.settlement == town.id and npc.occupation not in ["Sheriff", "Child"] and npc.health > 0 and not npc.get("garrison", false): others += 1
-		var want: int = 3 if others >= BIG_TOWN_RESIDENTS else MIN_SHERIFFS
-		var have: int = roster(s, town.id).size()
+		var want: int = load("res://sim/settlement/capital.gd").sheriffs_wanted(s, int(town.id))   # 3; 5 in the capital
+		var have: int = strength(s, int(town.id))
 		var office: Dictionary = s.entities[str(town.office)]
 		while have < want:
 			var door: Array = office.get("door", office.cell)
@@ -116,6 +119,16 @@ static func ensure(sim: RefCounted) -> void:
 				var short: int = KIT_BANDAGES - Inventory.amount(s, int(sheriff_id), "bandage")
 				var spare: int = mini(short, mini(Inventory.amount(s, source, "bandage"), Inventory.available(s, int(sheriff_id))))
 				if spare > 0: Inventory.transfer(s, source, int(sheriff_id), "bandage", spare)
+
+## A town's own sheriffs, counting those away helping another town (reinforcements.gd) and not
+## counting visitors helping here, so nobody is recruited just because some are on the road.
+static func strength(s: Dictionary, town: int) -> int:
+	var total := 0
+	for npc in s.get("residents", {}).values():
+		if npc.occupation != "Sheriff" or int(npc.health) <= 0: continue
+		var home: int = int(npc.get("reinforcing", {}).get("home", npc.settlement))
+		if home == town: total += 1
+	return total
 
 ## "desk" or "patrol": sheriffs take turns, so at least one is in the office at any time.
 static func duty(s: Dictionary, npc: Dictionary) -> String:

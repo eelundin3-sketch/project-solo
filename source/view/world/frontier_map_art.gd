@@ -1,5 +1,6 @@
 extends RefCounted
 ## Original, deterministic presentation shapes; no gameplay state is stored here.
+const HomeArt = preload("res://view/world/home_art.gd")
 const TREES = [preload("res://content/art/tree_0.svg"), preload("res://content/art/tree_1.svg"), preload("res://content/art/tree_2.svg"), preload("res://content/art/tree_3.svg")]
 const DEAD_TREES = [preload("res://content/art/tree_dead_0.svg"), preload("res://content/art/tree_dead_1.svg")]
 const World = preload("res://sim/world/world_db.gd")
@@ -8,6 +9,26 @@ const Furniture = preload("res://view/world/interior_art.gd")
 const FLOOR = preload("res://content/art/floor.svg")
 const INK := Color("30291e")
 const Character = preload("res://view/actors/frontier_character.gd")
+## The season shown (0 spring .. 3 winter) and how far into it (0..1 over its first day), set by
+## the world view each frame from the clock. Trees and grass tufts take their colours from it.
+static var season: int = 1
+static var previous_season: int = 0
+static var season_blend: float = 1.0
+const SEASON_LEAVES := [Color(1.05, 1.12, 0.78), Color.WHITE, Color(1.0, 0.84, 0.40), Color(0.80, 0.86, 0.82)]
+
+## The leaf colour for this moment of the year, blended over the first day of a season.
+static func season_leaves() -> Color:
+	return SEASON_LEAVES[previous_season].lerp(SEASON_LEAVES[season], season_blend)
+
+## Most trees drop their leaves in winter; one in three is evergreen.
+static func bare_in_winter(id: int) -> bool:
+	return season == 3 and season_blend >= 0.5 and posmod(id, 3) != 0
+
+## Grass tufts follow the season: fresh in spring, gold-brown in autumn, dull in winter.
+static func season_grass(color: Color) -> Color:
+	var tints := [Color(0.92, 1.06, 0.82), Color.WHITE, Color(1.25, 0.95, 0.55), Color(0.85, 0.82, 0.78)]
+	return color * Color(tints[previous_season]).lerp(tints[season], season_blend)
+
 static func box(c: Node2D, r: Rect2, color: Color, border: float = 2.0) -> void:
 	c.draw_rect(r, color)
 	c.draw_rect(r, INK, false, border)
@@ -74,12 +95,14 @@ static func tree(c: Node2D, p: Vector2, logs: int, id: int, pose: Dictionary = {
 
 ## Dry-country trees: bare dead trunks, and a few trees still holding autumn-coloured leaves.
 static func _tree_texture(id: int, pose: Dictionary) -> Texture2D:
-	return DEAD_TREES[posmod(id, 2)] if pose.get("dead", false) else TREES[posmod(id, 4)]
+	return DEAD_TREES[posmod(id, 2)] if pose.get("dead", false) or bare_in_winter(id) else TREES[posmod(id, 4)]
 
 static func _tree_tint(id: int, pose: Dictionary) -> Color:
-	if pose.get("dead", false): return Color.WHITE
+	if pose.get("dead", false) or bare_in_winter(id): return Color.WHITE
 	if pose.get("autumn", false): return Color(1.0, 0.82, 0.36).lerp(Color(1.0, 0.7, 0.3), float(posmod(id * 7, 5)) / 8.0)
-	return Color("d7e5c9").lerp(Color.WHITE, float(posmod(id * 13, 17)) / 24.0)
+	var leaves: Color = season_leaves()
+	if season == 2: leaves = leaves.lerp(Color(1.0, 0.70, 0.30), float(posmod(id * 7, 5)) / 6.0)   # autumn: each tree its own shade
+	return Color("d7e5c9").lerp(Color.WHITE, float(posmod(id * 13, 17)) / 24.0) * leaves
 
 static func _stump(c: Node2D, p: Vector2) -> void:
 	box(c, Rect2(p - Vector2(7, 10), Vector2(14, 12)), Color("83623c"))
@@ -221,7 +244,16 @@ static func furnishings(entity: Dictionary) -> Array[Dictionary]:
 			"bed": bottom = rect.size.y - 12.0
 			"table", "booking_desk": bottom = rect.size.y - 9.0
 			"shelf": bottom = rect.size.y - 13.0
-		items.append({"kind": layout.kind, "point": point, "bottom": bottom, "rot": rot, "center": rect.get_center(), "size": rect.size,
+			"bar_counter", "writing_desk":
+				point = rect.get_center()
+				bottom = rect.size.y - 8.0
+			"deck":
+				point = rect.position + Vector2(12, 12)
+				bottom = 0.0
+			"counter", "fridge", "sofa", "fireplace", "squat_rack", "bench_press", "deadlift_platform", "pullup_bar", "plate_tree":
+				point = rect.position + Vector2(12, 12)
+				bottom = rect.size.y - 12.0
+		items.append({"kind": layout.kind, "index": items.size(), "point": point, "bottom": bottom, "rot": rot, "center": rect.get_center(), "size": rect.size,
 			"width": rect.size.x - 8, "color": Color("9fa7a5")})
 	return items
 
@@ -267,7 +299,20 @@ static func _draw_base_pose(c: Node2D, item: Dictionary) -> void:
 		"chest": chest(c, p)
 		"booking_desk": booking_desk(c, p, item.size)
 		"locker": locker(c, p, item.size)
+		"bar_counter": bar_counter(c, p, item.size)
+		"writing_desk": writing_desk(c, p, item.size)
 		"toilet": toilet(c, p)
+		# Your house and its terrace (home_art.gd); `state` carries what's moving (a bar in your hands, the fridge door).
+		"deck": HomeArt.deck(c, p, item.size)
+		"counter": HomeArt.counter(c, p, item.size)
+		"fridge": HomeArt.fridge(c, p, float(item.get("open", 0.0)))
+		"sofa": HomeArt.sofa(c, p, item.size)
+		"fireplace": HomeArt.fireplace(c, p, item.size, float(item.get("time", 0.0)))
+		"squat_rack": HomeArt.squat_rack(c, p, item.size, bool(item.get("bar_out", false)))
+		"bench_press": HomeArt.bench_press(c, p, item.size, bool(item.get("bar_out", false)))
+		"deadlift_platform": HomeArt.deadlift_platform(c, p, item.size, bool(item.get("bar_out", false)))
+		"pullup_bar": HomeArt.pullup_bar(c, p, item.size)
+		"plate_tree": HomeArt.plate_tree(c, p)
 
 ## The intake desk in the sheriff's office: ledger, ink, a stamp, and the box camera used for mugshots.
 static func booking_desk(c: Node2D, p: Vector2, size: Vector2) -> void:
@@ -466,6 +511,145 @@ static func construction(c: Node2D, entity: Dictionary, site: Dictionary, rect: 
 		box(c, Rect2(door + Vector2(4, 0), Vector2(16, 6)), Color("d2b47e"), 1)
 	c.draw_rect(rect, Color("dfc58f", 0.55), false, 1)
 
+## The bandits' camp, around the fire at `p` (the layout is bandits.gd's: TENTS, SEATS, POT,
+## WOODPILE, POST). Three big canvas tents, each open at the front with a bedroll inside where its
+## bandit sleeps; log seats; a tripod and pot over the fire; a woodpile; the post for a captive.
+## The flames themselves are drawn moving every frame (campfire_flames).
+static func bandit_camp(c: Node2D, p: Vector2, tents: int = 3) -> void:
+	var Bandits = load("res://sim/factions/bandits.gd")
+	for i in range(clampi(tents, 3, Bandits.TENTS.size())):
+		var t: Vector2 = p + Vector2(Bandits.TENTS[i][0], Bandits.TENTS[i][1]) * 24.0
+		var canvas: Color = [Color("b9a47c"), Color("a8916a"), Color("b3a07a")][i % 3]
+		var back := t + Vector2(0, -34)
+		Props.ellipse(c, t + Vector2(0, 16), Vector2(46, 12), Color(0, 0, 0, 0.18), 0, INK, 0)
+		# The dark inside and the groundsheet, then the two sloping sides and the ridge.
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-34, 16), back + Vector2(-26, 0), back + Vector2(26, 0), t + Vector2(34, 16)]), Color("2e241a"))
+		c.draw_rect(Rect2(t + Vector2(-22, -14), Vector2(44, 28)), Color("4a3a28"))
+		c.draw_rect(Rect2(t + Vector2(-14, -8), Vector2(28, 18)), Color("6d5a3c"))                     # bedroll
+		c.draw_rect(Rect2(t + Vector2(-14, -8), Vector2(9, 18)), Color("8a7653"))                      # rolled blanket end
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(-34, 16), back + Vector2(-26, 0), back + Vector2(-4, -18), t + Vector2(-20, 4)]), canvas)
+		c.draw_colored_polygon(PackedVector2Array([t + Vector2(34, 16), back + Vector2(26, 0), back + Vector2(4, -18), t + Vector2(20, 4)]), canvas.darkened(0.16))
+		c.draw_colored_polygon(PackedVector2Array([back + Vector2(-4, -18), back + Vector2(4, -18), t + Vector2(20, 4), t + Vector2(-20, 4)]), canvas.darkened(0.32))
+		c.draw_polyline(PackedVector2Array([t + Vector2(-34, 16), back + Vector2(-26, 0), back + Vector2(-4, -18), back + Vector2(4, -18), back + Vector2(26, 0), t + Vector2(34, 16)]), INK, 1.2, true)
+		c.draw_rect(Rect2(t + Vector2(-28, -2), Vector2(9, 7)), canvas.darkened(0.1))              # a patch
+		for pole in [back + Vector2(-4, -18), back + Vector2(4, -18)]:
+			c.draw_line(pole, pole + Vector2(0, -7), Color("5c4630"), 2.0)
+		for peg in [t + Vector2(-38, 18), t + Vector2(38, 18)]:
+			c.draw_line(peg, peg + Vector2(0, -5), Color("5c4630"), 1.5)
+	# Log seats where the bandits sit.
+	for seat in Bandits.SEATS:
+		var s := p + Vector2(seat[0], seat[1]) * 24.0 + Vector2(0, 8)
+		c.draw_line(s + Vector2(-11, 0), s + Vector2(11, -1), Color("6e4a2c"), 8.0, true)
+		c.draw_line(s + Vector2(-11, -2), s + Vector2(11, -3), Color("8c6340"), 3.0, true)
+		c.draw_circle(s + Vector2(11, -1), 4.0, Color("c9a06a"))
+	# Crates and rocks (cover in a fight).
+	for crate in Bandits.PROPS.crate:
+		var q := p + Vector2(crate[0], crate[1]) * 24.0
+		Props.ellipse(c, q + Vector2(0, 10), Vector2(13, 4), Color(0, 0, 0, 0.18), 0, INK, 0)
+		c.draw_rect(Rect2(q + Vector2(-11, -12), Vector2(22, 20)), Color("8a6a42"))
+		c.draw_rect(Rect2(q + Vector2(-11, -12), Vector2(22, 20)), INK, false, 1.2)
+		c.draw_line(q + Vector2(-11, -12), q + Vector2(11, 8), Color("6a4f30"), 1.5)
+		c.draw_line(q + Vector2(-11, -2), q + Vector2(11, -2), Color("6a4f30"), 1.2)
+	for rock_at in Bandits.PROPS.rock:
+		rock(c, p + Vector2(rock_at[0], rock_at[1]) * 24.0)
+	# The woodpile.
+	var pile := p + Vector2(9.5, 2.0) * 24.0
+	for row in range(3):
+		for n in range(4 - row):
+			var q := pile + Vector2(-14 + n * 9 + row * 4.5, 6 - row * 6)
+			c.draw_circle(q, 4.2, Color("6e4a2c"))
+			c.draw_circle(q, 2.6, Color("c9a06a"))
+	# The fire's stone ring and logs (the flames move: campfire_flames).
+	for i in range(10):
+		var a: float = float(i) / 10.0 * TAU
+		Props.ellipse(c, p + Vector2(cos(a) * 15, sin(a) * 8.5 + 6), Vector2(4.6, 3.2), Color("85827a"), 0, INK, 0.6)
+	c.draw_line(p + Vector2(-10, 9), p + Vector2(10, 3), Color("3b2a1c"), 4.5, true)
+	c.draw_line(p + Vector2(-9, 3), p + Vector2(9, 10), Color("4a3422"), 4.5, true)
+	# Tripod and pot by the fire.
+	var pot := p + Vector2(Bandits.POT[0], Bandits.POT[1]) * 24.0
+	for leg in [Vector2(-10, 12), Vector2(10, 12), Vector2(0, 4)]:
+		c.draw_line(pot + Vector2(0, -22), pot + leg, Color("4a3422"), 2.0, true)
+	c.draw_line(pot + Vector2(0, -22), pot + Vector2(0, -12), Color("3a3a3a"), 1.2)
+	Props.ellipse(c, pot + Vector2(0, -6), Vector2(7, 6), Color("2f2f30"), 0, INK, 0.8)
+	Props.ellipse(c, pot + Vector2(0, -11), Vector2(6, 2), Color("6b5a3e"), 0, INK, 0)   # stew
+	# The post a captive is tied to.
+	var post := p + Vector2(Bandits.POST[0], Bandits.POST[1]) * 24.0
+	c.draw_line(post + Vector2(0, 4), post + Vector2(0, -34), Color("5c4630"), 5.0, true)
+	c.draw_line(post + Vector2(-3, -14), post + Vector2(3, -12), Color("c9b48a"), 2.0, true)
+
+## A living campfire at `p` at time `t` (seconds): tongues of flame that lick up and sway, a hot
+## core, embers, sparks that drift up and fade, and a thread of smoke.
+static func campfire_flames(c: Node2D, p: Vector2, t: float) -> void:
+	var base := p + Vector2(0, 5)
+	c.draw_circle(base + Vector2(0, 1), 10.0, Color(1.0, 0.45, 0.1, 0.22 + 0.06 * sin(t * 9.0)))   # glow on the logs
+	for i in range(7):
+		var phase: float = t * (5.0 + float(i) * 0.9) + float(i) * 1.7
+		var sway: float = sin(phase) * 2.2 + sin(t * 3.1 + float(i)) * 1.2
+		var height: float = 14.0 + 7.0 * (0.5 + 0.5 * sin(phase * 1.3)) * (1.0 - absf(float(i) - 3.0) / 4.5)
+		var x: float = (float(i) - 3.0) * 2.6
+		var w: float = 3.2 + 1.2 * sin(phase * 0.7)
+		var tip := base + Vector2(x + sway, -height)
+		var outer := Color(0.95, 0.42 + 0.1 * sin(phase), 0.1, 0.9)
+		c.draw_colored_polygon(PackedVector2Array([base + Vector2(x - w, 0), base + Vector2(x - w * 0.6, -height * 0.45) + Vector2(sway * 0.4, 0), tip, base + Vector2(x + w * 0.6, -height * 0.45) + Vector2(sway * 0.4, 0), base + Vector2(x + w, 0)]), outer)
+	for i in range(4):
+		var phase2: float = t * 7.0 + float(i) * 2.3
+		var h: float = 7.0 + 4.0 * (0.5 + 0.5 * sin(phase2))
+		var x2: float = (float(i) - 1.5) * 2.4 + sin(phase2) * 1.2
+		c.draw_colored_polygon(PackedVector2Array([base + Vector2(x2 - 2.2, 0), base + Vector2(x2, -h), base + Vector2(x2 + 2.2, 0)]), Color(1.0, 0.86, 0.38, 0.95))
+	for i in range(6):
+		var life: float = fmod(t * 0.55 + float(i) / 6.0, 1.0)
+		var spark := base + Vector2(sin(float(i) * 2.1 + t * 1.3) * (3.0 + life * 7.0), -10.0 - life * 34.0)
+		c.draw_circle(spark, 0.9, Color(1.0, 0.75, 0.3, 1.0 - life))
+	for i in range(4):
+		var age: float = fmod(t * 0.18 + float(i) / 4.0, 1.0)
+		c.draw_circle(base + Vector2(4.0 + age * 10.0 + sin(t + float(i)) * 2.0, -24.0 - age * 40.0), 3.0 + age * 6.0, Color(0.55, 0.55, 0.55, 0.22 * (1.0 - age)))
+
+## A street lamp: a tall iron post with a glass lantern box on top. The light pool itself comes
+## from the night layer, so the drawing is the same by day and by night.
+static func street_lamp(c: Node2D, p: Vector2) -> void:
+	Props.ellipse(c, p + Vector2(0, 3), Vector2(8, 2.8), Color(0, 0, 0, 0.2), 0, INK, 0)
+	c.draw_rect(Rect2(p + Vector2(-4, -2), Vector2(8, 4)), Color("3e3a36"))
+	c.draw_line(p + Vector2(0, -1), p + Vector2(0, -44), Color("2f2b28"), 3.0, true)
+	c.draw_line(p + Vector2(0.8, -3), p + Vector2(0.8, -42), Color("6a625a"), 1.0, true)
+	c.draw_line(p + Vector2(0, -44), p + Vector2(6, -46), Color("2f2b28"), 2.0, true)
+	var box := Rect2(p + Vector2(-5, -56), Vector2(10, 11))
+	c.draw_rect(box, Color("f1d48a", 0.9))
+	c.draw_rect(box, Color("2f2b28"), false, 1.5)
+	c.draw_line(p + Vector2(0, -56), p + Vector2(0, -45), Color("2f2b28", 0.7), 1.0)
+	c.draw_colored_polygon(PackedVector2Array([p + Vector2(-7, -56), p + Vector2(7, -56), p + Vector2(0, -61)]), Color("2f2b28"))
+
+## The saloon's bar: a long polished counter with a brass foot rail, and shelves of bottles on the
+## wall behind it. `p` is the centre, `size` the counter's size in pixels.
+static func bar_counter(c: Node2D, p: Vector2, size: Vector2) -> void:
+	var w: float = size.x
+	var back := Rect2(p + Vector2(-w / 2, -size.y / 2 - 30), Vector2(w, 12))
+	c.draw_rect(back, Color("5b3d26"))
+	for i in range(int(w / 9.0)):
+		var x: float = back.position.x + 5 + i * 9
+		var hue: Color = [Color("3f6b3a"), Color("8a3b2a"), Color("c9a24a"), Color("4a5f7a")][i % 4]
+		c.draw_rect(Rect2(Vector2(x, back.position.y - 8), Vector2(5, 9)), hue)
+		c.draw_rect(Rect2(Vector2(x + 1.5, back.position.y - 11), Vector2(2, 3)), hue.darkened(0.3))
+	var top := Rect2(p + Vector2(-w / 2, -size.y / 2), Vector2(w, size.y))
+	c.draw_rect(top.grow(1), Color(0, 0, 0, 0.25))
+	c.draw_rect(Rect2(top.position, Vector2(w, 8)), Color("9a6a3e"))
+	c.draw_rect(Rect2(top.position + Vector2(0, 8), Vector2(w, size.y - 8)), Color("6e4527"))
+	c.draw_line(top.position + Vector2(2, 2), top.position + Vector2(w - 2, 2), Color("c99766"), 1.2)
+	c.draw_line(Vector2(top.position.x + 3, top.end.y - 3), Vector2(top.end.x - 3, top.end.y - 3), Color("c8a046"), 2.0)
+	for x in [w * 0.25, w * 0.6]:
+		c.draw_circle(top.position + Vector2(x, 4), 2.2, Color("e0d5b5"))   # glasses on the bar
+
+## The governor's writing desk: a heavy desk with papers, an inkwell and a ledger.
+static func writing_desk(c: Node2D, p: Vector2, size: Vector2) -> void:
+	var r := Rect2(p - size / 2, size)
+	c.draw_rect(r.grow(1), Color(0, 0, 0, 0.25))
+	c.draw_rect(r, Color("7a4a2a"))
+	c.draw_rect(r.grow(-3), Color("8f5a34"))
+	c.draw_rect(Rect2(r.position + Vector2(8, 6), Vector2(16, 12)), Color("efe6cf"))
+	c.draw_rect(Rect2(r.position + Vector2(12, 9), Vector2(16, 12)), Color("e6dbbe"))
+	c.draw_rect(Rect2(r.end - Vector2(26, 20), Vector2(18, 13)), Color("5a2e22"))
+	c.draw_circle(r.position + Vector2(r.size.x - 10, 10), 3.0, Color("1f1a17"))
+	c.draw_line(r.position + Vector2(r.size.x - 10, 10), r.position + Vector2(r.size.x - 4, 2), Color("d8d0bc"), 1.0)
+
 static func lamp(c: Node2D, p: Vector2) -> void:
 	for radius in [23, 17, 11]:
 		c.draw_circle(p + Vector2(0, -24), radius, Color(1.0, 0.77, 0.32, 0.045))
@@ -558,7 +742,7 @@ static func vegetation(c: Node2D, bounds: Rect2, buildings: Array, wind_phase: f
 			if intersects: continue
 			var base := cell_rect.position + Vector2(6 + hash_value % 9, 17)
 			if road_coverage.is_valid() and road_coverage.call(base) > 0.53: continue
-			var shade: Color = Color("355a33") if hash_value % 2 == 0 else Color("53723e")
+			var shade: Color = season_grass(Color("355a33") if hash_value % 2 == 0 else Color("53723e"))
 			if Vector2(float(x) - dry_center.x, (float(y) - dry_center.y) * 1.2).length() < 46.0: shade = Color("8a7448") if hash_value % 2 == 0 else Color("a38b57")  # dry grass around Dustvale
 			var sway: float = sin(wind_phase + float(x) * 0.19 + float(y) * 0.13) * wind_strength * 2.0
 			c.draw_line(base, base + Vector2(-2 + sway, -6), shade, 1.4, true)

@@ -13,7 +13,7 @@ func _initialize() -> void:
 	for town in s.settlements.values():
 		var count := 0
 		for npc in s.residents.values():
-			if npc.settlement == town.id and not npc.get("garrison", false): count += 1   # the extra office sheriffs are not counted
+			if npc.settlement == town.id and not npc.get("garrison", false) and npc.occupation not in ["Governor", "Barkeep"]: count += 1   # not the extra office sheriffs, nor the capital's governor and barkeep
 		check(count == 5, "%s starts with 5 villagers: %d" % [town.name, count])
 	# Chests are real entities with contents.
 	var chest: Dictionary = {}

@@ -60,6 +60,9 @@ static func unavailable(s: Dictionary, npc: Dictionary) -> String:
 	if npc.occupation == "Trader" and load("res://sim/economy/traders.gd").away(s, npc): return "%s is away on the road." % first
 	if Brawl.knocked(s, npc) or not npc.get("arrest", {}).is_empty() or not npc.get("fear", {}).is_empty() or not npc.get("migration", {}).is_empty():
 		return "%s cannot come right now." % first
+	# Known as wanted here: most won't serve you (the timid do, at double the price).
+	if load("res://sim/law/notoriety.gd").known(s, int(npc.settlement)) and Brawl.temperament(npc) != "timid":
+		return "%s: I don't serve your kind. Clear out before I call the sheriff." % first
 	return ""
 
 ## True when someone is behind the counter to trade with.
@@ -166,6 +169,7 @@ static func price(s: Dictionary, town_id: int, item: String, buying: bool, targe
 	var terms: Dictionary = s.get("player_control", {}).get("trade_terms", {})
 	var pct: int = int(terms.get("pct", 0)) if int(terms.get("target", 0)) == target else 0
 	pct += feeling_pct(s, target) + load("res://sim/player/look.gd").price_pct(s)   # how they feel, and how you look
+	if load("res://sim/law/notoriety.gd").known(s, town_id): pct += 100   # a wanted man pays double, if served at all
 	var adjusted: int = roundi(float(base) * float(100 + pct) / 100.0) if buying else roundi(float(base) * float(100 - pct) / 100.0)
 	return clampi(adjusted, 1, 100)
 
@@ -228,4 +232,6 @@ static func news(s: Dictionary, npc: Dictionary) -> String:
 	var wanted: Dictionary = s.get("law", {}).get("wanted", {}).get(str(here), {})
 	var trouble: String = " The sheriff is looking for you, mind." if not wanted.is_empty() else ""
 	if best.is_empty(): best = "Prices are much the same everywhere just now."
+	var weather: String = load("res://sim/world/weather.gd").news_line(s, here)
+	if not weather.is_empty(): best = weather + " " + best
 	return best + trouble

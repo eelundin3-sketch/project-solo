@@ -12,7 +12,8 @@ func _initialize() -> void:
 	var sim := Sim.new(); sim.start_game(); var s: Dictionary = sim.state
 	# Every household's home has a garden of sensible size beside the house.
 	var homes: Dictionary = {}
-	for household in s.households.values(): homes[household.home] = true
+	for household in s.households.values():
+		if s.entities[str(household.home)].kind == "home": homes[household.home] = true   # not the governor's town house or the saloon
 	check(not homes.is_empty(), "Households exist")
 	for home in homes:
 		var gardens: Array = Crops.plots_for_home(s, home)

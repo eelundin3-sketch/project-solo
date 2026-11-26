@@ -22,12 +22,12 @@ static func refresh(sim: RefCounted) -> void:
 		if targets.has(id): continue
 		var entity: Dictionary = s.entities.get(str(id), {})
 		if entity.is_empty(): continue
-		var item: String = "log" if entity.kind == "tree" else ("ore" if entity.kind == "ore" else "food" if Inventory.amount(s, entity.id, "food") >= 1 else "rye")
-		if Inventory.amount(s, entity.id, item) < 1:
-			continue
 		var destination: int = s.warehouse
 		if s.has("settlements") and s.settlements.has(str(entity.settlement)):
 			destination = s.settlements[str(entity.settlement)].warehouse
+		var item: String = "log" if entity.kind == "tree" else ("ore" if entity.kind == "ore" else farm_item(s, entity.id, destination))
+		if Inventory.amount(s, entity.id, item) < 1:
+			continue
 		var job_id: int = sim.new_id()
 		var fresh := _index_valid(s)
 		s.jobs[str(job_id)] = {"id": job_id, "kind": "gather", "target": entity.id,
@@ -35,6 +35,22 @@ static func refresh(sim: RefCounted) -> void:
 			"state": "OPEN", "lease_until": 0, "retry_count": 0, "retry_at": 0,
 			"reason": "", "progress": 0, "settlement": entity.settlement}
 		if fresh: _index_add(s, s.jobs[str(job_id)])
+
+## How much of an item the storehouse takes in before gatherers stop bringing it. Food and rye
+## are laid up for the winter (a 15-day season without a harvest), so the store keeps far more.
+static func store_cap(item: String) -> int:
+	if item == "log": return 800
+	if item == "food" or item == "rye": return 800
+	return 200
+
+## What to carry from a farm: whichever of food and rye the storehouse is shorter of (so the rye
+## harvest reaches the baker instead of piling up at the farm), if the farm has any.
+static func farm_item(s: Dictionary, farm: int, store: int) -> String:
+	var food: int = Inventory.amount(s, farm, "food")
+	var rye: int = Inventory.amount(s, farm, "rye")
+	if food < 1: return "rye"
+	if rye < 1: return "food"
+	return "food" if Inventory.amount(s, store, "food") <= Inventory.amount(s, store, "rye") else "rye"
 
 ## Jobs grouped by settlement, so a resident looking for work only walks their own town's jobs.
 ## Derived (never saved): kept up to date where jobs are created and removed, and rebuilt from
@@ -119,7 +135,7 @@ static func try_claim(state: Dictionary, job_id: int, npc_id: int) -> bool:
 		job.reason = "STORE_FULL"
 		job.retry_at = state.tick + 100
 		return false
-	var route := Nav.request_path(state, state.entities[str(npc_id)].cell, source_stance(state, job))
+	var route := Nav.request_walk_path(state, state.entities[str(npc_id)].cell, source_stance(state, job))
 	if not route.ok:
 		Inventory.release(state, job.destination, str(job.id))
 		job.reason = route.error_code
@@ -150,7 +166,14 @@ static func assign(state: Dictionary, npc_id: int) -> bool:
 		if job.owner != 0 or job.retry_at > state.tick or job.settlement != npc.settlement: continue
 		var store_key: String = "%d:%s" % [job.destination, job.item]
 		if not store_open.has(store_key):
-			store_open[store_key] = Inventory.amount(state, job.destination, job.item) < (800 if job.item == "log" else 200)
+			store_open[store_key] = Inventory.amount(state, job.destination, job.item) < store_cap(job.item)
+		if not store_open[store_key] and job.item in ["food", "rye"]:
+			# The store is full of this one: carry the farm's other crop instead, if it has room for that.
+			var other: String = "rye" if job.item == "food" else "food"
+			if Inventory.amount(state, job.target, other) >= 1 and Inventory.amount(state, job.destination, other) < store_cap(other):
+				job.item = other
+				store_key = "%d:%s" % [job.destination, job.item]
+				store_open[store_key] = true
 		if not store_open[store_key]: continue
 		var target: Dictionary = state.entities[str(job.target)]
 		var kind: String = target.kind
@@ -181,7 +204,7 @@ static func advance(sim: RefCounted, npc_id: int) -> void:
 	if npc.nav_revision != s.world.nav_revision:
 		var goal: Array = World.Fixtures.interaction_cell(s, job.destination) if job.state in ["MOVING_TO_DEST", "DEPOSITING"] else source_stance(s, job)
 		var keeps: bool = (npc.path.is_empty() and actor.cell == goal) or (not npc.path.is_empty() and npc.path.back() == goal and Nav.still_clear(s, npc.path))
-		var route := {"ok": true, "path": npc.path} if keeps else Nav.request_path(s, actor.cell, goal)
+		var route := {"ok": true, "path": npc.path} if keeps else Nav.request_walk_path(s, actor.cell, goal)
 		if not route.ok:
 			release(s, job.id, route.error_code)
 			return
@@ -213,7 +236,7 @@ static func advance(sim: RefCounted, npc_id: int) -> void:
 			if not moved.ok:
 				release(s, job.id, moved.error_code)
 				return
-			var route := Nav.request_path(s, actor.cell, World.Fixtures.interaction_cell(s, job.destination))
+			var route := Nav.request_walk_path(s, actor.cell, World.Fixtures.interaction_cell(s, job.destination))
 			if not route.ok:
 				release(s, job.id, route.error_code)
 				return

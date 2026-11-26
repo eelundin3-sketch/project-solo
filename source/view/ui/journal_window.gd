@@ -63,6 +63,12 @@ func rows(s: Dictionary) -> Array:
 				var word: String = "dead" if int(npc.health) <= 0 else ("warm to you" if feeling >= 35 else ("friendly" if feeling >= 15 else ("cold to you" if feeling <= -30 else ("wary" if feeling <= -10 else "neutral"))))
 				result.append([str(person.name), "%s of %s · %s" % [str(npc.occupation), town, word]])
 		"news":
+			# The sheriffs' cases you know of (investigation.gd), then what you've heard.
+			for c in s.get("law", {}).get("cases", []):
+				var who: String = str(s.entities.get(str(c.victim), {}).get("name", "Someone"))
+				var town_name: String = str(s.settlements.get(str(c.town), {}).get("name", ""))
+				var state: String = {"solved": "solved", "outlaw": "closed: an outlaw", "suspect": "the sheriff suspects you", "unsolved": "open, nobody saw anything", "missing": "open: still missing"}.get(str(c.get("outcome", "")), "under investigation")
+				result.append(["Case: %s%s" % [who, (" (%s)" % c.cause) if str(c.get("cause", "")) != "" else ""], "%s · %s" % [town_name, state]])
 			var heard: Array = status.get("heard", [])
 			for index in range(heard.size() - 1, -1, -1):
 				result.append([str(heard[index].text), "Heard from %s, day %d" % [str(heard[index].get("from", "someone")), int(heard[index].tick) / 14400 + 1]])
@@ -80,6 +86,13 @@ func rows(s: Dictionary) -> Array:
 			for key in keys:
 				var standing: int = Reputation.value(s, int(key))
 				result.append([str(s.settlements[key].name), "You are %s here (%+d)" % [Reputation.label(standing), standing]])
+			for key in keys:
+				var record: Dictionary = s.get("law", {}).get("wanted", {}).get(key, {})
+				if record.is_empty(): continue
+				var Notoriety = load("res://sim/law/notoriety.gd")
+				result.append(["Wanted in %s" % str(s.settlements[key].name), "%s · %d hours · known by %s" % [Notoriety.crimes_line(s, int(key)), int(record.hours), "face" if bool(record.get("face", false)) else "your clothes"]])
+			if s.has("bandits") and bool(s.get("player_status", {}).get("known_places", {}).get("bandit_camp", false)):
+				result.append(["Bounties", load("res://sim/law/bounties.gd").notice(s)])
 			var Look = load("res://sim/player/look.gd")
 			result.append(["Your looks", "You look %s." % Look.label(s)])
 			var Encumbrance = load("res://sim/player/encumbrance.gd")

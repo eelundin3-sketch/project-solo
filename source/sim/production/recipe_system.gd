@@ -184,7 +184,8 @@ static func _update_workshop(s: Dictionary, workshop: Dictionary, npc: Dictionar
 			return
 		start(s, workshop, workshop.id)
 		return
-	if Inventory.amount(s, workshop.store, recipe.output) >= 300: return
+	# Bread is laid up for the winter: the baker keeps baking until the store holds plenty.
+	if Inventory.amount(s, workshop.store, recipe.output) >= (800 if recipe.output == "food" else 300): return
 	npc.status = "Walking to collect bulk workshop inputs"
 	if not work_at(s, npc, workshop.store): return
 	var requested := maxi(0, recipe.input_quantity * 4 - inputs)

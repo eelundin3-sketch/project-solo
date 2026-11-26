@@ -186,11 +186,46 @@ static func on_player_hit(sim: RefCounted, npc: Dictionary, victim: Dictionary, 
 		return   # the sheriff arrests rather than brawls (law.gd)
 	var mode := "kill" if int(npc.offences) >= 3 else ("beat" if int(npc.offences) >= 2 else "shove")
 	if not npc.get("brawl", {}).is_empty(): npc.brawl.mode = mode
+	# Not everyone hits back. By temperament (fixed per person): some fight, most confront you and
+	# then fetch the sheriff, the timid flee and call for help.
+	var temper: String = temperament(npc)
+	if temper != "fighter" and npc.get("brawl", {}).is_empty():
+		npc.anger = mini(int(npc.anger), HOSTILE_AT - 1)   # not getting up swinging either
+		var report: Dictionary = npc.get("reporting", {})
+		if temper == "timid":
+			_law()._say(sim, npc.id, ["Help! Somebody help me!", "Leave me alone! Help!", "Sheriff! Sheriff!"][int(npc.id) % 3])
+			if report.is_empty() and not knocked(s, npc): load("res://sim/entities/fear.gd")._scare(sim, npc, s.entities[str(s.player)].cell)
+			npc.status = "Fleeing from the traveller"
+			s.player_control.notice = "%s backs away from you, calling for help." % s.entities[str(npc.id)].name
+		elif int(npc.offences) >= 2 and not report.is_empty():
+			report.erase("hold_until")      # hit again: off to the sheriff now
+			_law()._say(sim, npc.id, "That's it! I'm getting the sheriff!")
+			s.player_control.notice = "%s runs off to fetch the sheriff." % s.entities[str(npc.id)].name
+		else:
+			_law()._say(sim, npc.id, ["Hey! What do you think you're doing?!", "What's the matter with you?!", "Have you lost your mind, stranger?!"][int(npc.id) % 3])
+			if not report.is_empty():
+				report.hold_until = s.tick + CONFRONT_TICKS   # back off now, or they go for the sheriff
+			npc.status = "Confronting the traveller"
+			s.player_control.notice = "%s stands up to you. Back off, or they'll fetch the sheriff." % s.entities[str(npc.id)].name
+		return
+	if temper == "fighter" and not npc.get("reporting", {}).is_empty(): npc.reporting = {}   # fights instead of running
 	if int(npc.anger) >= HOSTILE_AT and not knocked(s, npc):
 		if npc.get("brawl", {}).is_empty():
 			engage(s, npc, mode)
 			_say(sim, npc.id, "angry_beat" if mode != "shove" else "angry_first")
 			s.player_control.notice = ("%s is furious and comes at you!" if mode != "shove" else "%s is angry and storms after you!") % s.entities[str(npc.id)].name
+
+## How someone takes a blow: "fighter" hits back (more of the heavy trades), "timid" flees and
+## calls for help, "confront" (most people) stands up to you, then fetches the sheriff.
+const HEAVY_TRADES := ["Blacksmith", "Sawyer", "Woodsman", "Miner"]
+const CONFRONT_TICKS := 40
+static func temperament(npc: Dictionary) -> String:
+	if npc.get("occupation", "") == "Child": return "timid"
+	var roll: int = posmod(int(npc.id) * 37 + 11, 100)
+	var fighters: int = 30 + (20 if npc.get("occupation", "") in HEAVY_TRADES else 0)
+	if roll < fighters: return "fighter"
+	if roll < fighters + 20: return "timid"
+	return "confront"
 
 ## Turns a resident hostile toward the player: they drop their work and fight until it burns out.
 static func engage(s: Dictionary, npc: Dictionary, mode: String = "shove") -> void:
@@ -233,7 +268,7 @@ static func update(sim: RefCounted) -> void:
 				npc.status = "Back on their feet"
 				npc.work_pause_until = s.tick + 20
 				# Someone shoved down while angry gets up and goes after the player.
-				if int(npc.get("anger", 0)) >= HOSTILE_AT and npc.get("brawl", {}).is_empty() and not player_down(s) and npc.occupation != "Sheriff":
+				if int(npc.get("anger", 0)) >= HOSTILE_AT and npc.get("brawl", {}).is_empty() and not player_down(s) and npc.occupation != "Sheriff" and temperament(npc) == "fighter":
 					engage(s, npc, "beat" if int(npc.get("offences", 0)) >= 2 else "shove")
 					s.player_control.notice = "%s gets up, angry!" % s.entities[str(npc.id)].name
 			continue
@@ -406,6 +441,9 @@ static func kill(sim: RefCounted, npc: Dictionary, cause: String) -> void:
 	if npc.job != 0: Jobs.release(s, npc.job, "DIED")
 	npc.health = 0
 	npc.dead = true
+	npc.died_tick = s.tick                              # for the investigation (investigation.gd)
+	npc.died_at = s.entities[str(npc.id)].cell.duplicate()
+	npc.cause = cause
 	npc.knock = {}
 	npc.brawl = {}
 	npc.attack = {}

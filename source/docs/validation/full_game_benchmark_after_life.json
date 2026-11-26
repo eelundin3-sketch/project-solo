@@ -1,0 +1,304 @@
+{
+  "cpu": "Apple M4",
+  "engine": "4.6-stable (official)",
+  "jobs": 6291,
+  "label": "after_life",
+  "rows": [
+    {
+      "astar_calls": 38,
+      "astar_nodes": 0,
+      "max_ms": 41.19,
+      "p50_ms": 0.609,
+      "p95_ms": 4.359,
+      "p999_ms": 15.765,
+      "p99_ms": 14.575,
+      "phase": "warmup",
+      "systems": {
+        "bleeding+stalls+families": {
+          "avg_ms": 0.031,
+          "worst_ms": 0.04
+        },
+        "body+cover": {
+          "avg_ms": 0.018,
+          "worst_ms": 0.05
+        },
+        "brawl": {
+          "avg_ms": 0.049,
+          "worst_ms": 0.11
+        },
+        "commands": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.0
+        },
+        "context": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.0
+        },
+        "daily+crops": {
+          "avg_ms": 0.004,
+          "worst_ms": 0.03
+        },
+        "fear": {
+          "avg_ms": 0.011,
+          "worst_ms": 0.02
+        },
+        "gunfire": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.01
+        },
+        "jobs_refresh": {
+          "avg_ms": 0.504,
+          "worst_ms": 35.71
+        },
+        "law": {
+          "avg_ms": 0.104,
+          "worst_ms": 0.21
+        },
+        "local_combat+route": {
+          "avg_ms": 0.004,
+          "worst_ms": 0.01
+        },
+        "market": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.0
+        },
+        "nav_grid_rebuild": {
+          "avg_ms": 0.005,
+          "worst_ms": 1.04
+        },
+        "planner": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.01
+        },
+        "player+needs+shotgun": {
+          "avg_ms": 0.016,
+          "worst_ms": 0.11
+        },
+        "recipes": {
+          "avg_ms": 0.042,
+          "worst_ms": 0.35
+        },
+        "regional": {
+          "avg_ms": 0.014,
+          "worst_ms": 0.07
+        },
+        "residents": {
+          "avg_ms": 0.66,
+          "worst_ms": 14.14
+        },
+        "society": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.03
+        },
+        "speech": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.17
+        },
+        "street_grid_rebuild": {
+          "avg_ms": 0.068,
+          "worst_ms": 13.53
+        },
+        "weather+unarmed": {
+          "avg_ms": 0.01,
+          "worst_ms": 0.03
+        }
+      },
+      "ticks": 200,
+      "total_ms": 295.8
+    },
+    {
+      "astar_calls": 346,
+      "astar_nodes": 0,
+      "max_ms": 25.64,
+      "p50_ms": 0.552,
+      "p95_ms": 3.965,
+      "p999_ms": 17.175,
+      "p99_ms": 7.622,
+      "phase": "idle",
+      "systems": {
+        "bleeding+stalls+families": {
+          "avg_ms": 0.032,
+          "worst_ms": 1.11
+        },
+        "body+cover": {
+          "avg_ms": 0.019,
+          "worst_ms": 0.08
+        },
+        "brawl": {
+          "avg_ms": 0.05,
+          "worst_ms": 0.14
+        },
+        "commands": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.06
+        },
+        "context": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.01
+        },
+        "daily+crops": {
+          "avg_ms": 0.014,
+          "worst_ms": 21.61
+        },
+        "fear": {
+          "avg_ms": 0.011,
+          "worst_ms": 0.04
+        },
+        "gunfire": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.02
+        },
+        "jobs_refresh": {
+          "avg_ms": 0.333,
+          "worst_ms": 8.38
+        },
+        "law": {
+          "avg_ms": 0.107,
+          "worst_ms": 0.3
+        },
+        "local_combat+route": {
+          "avg_ms": 0.004,
+          "worst_ms": 0.03
+        },
+        "market": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.14
+        },
+        "planner": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.03
+        },
+        "player+needs+shotgun": {
+          "avg_ms": 0.016,
+          "worst_ms": 0.14
+        },
+        "recipes": {
+          "avg_ms": 0.049,
+          "worst_ms": 0.31
+        },
+        "regional": {
+          "avg_ms": 0.027,
+          "worst_ms": 16.19
+        },
+        "residents": {
+          "avg_ms": 0.319,
+          "worst_ms": 13.61
+        },
+        "society": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.04
+        },
+        "speech": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.17
+        },
+        "travel_grid_rebuild": {
+          "avg_ms": 0.003,
+          "worst_ms": 8.22
+        },
+        "weather+unarmed": {
+          "avg_ms": 0.01,
+          "worst_ms": 0.05
+        }
+      },
+      "ticks": 3000,
+      "total_ms": 3023.7
+    },
+    {
+      "astar_calls": 34,
+      "astar_nodes": 0,
+      "max_ms": 25.05,
+      "p50_ms": 0.573,
+      "p95_ms": 4.002,
+      "p999_ms": 11.589,
+      "p99_ms": 5.065,
+      "phase": "after_shot",
+      "systems": {
+        "bleeding+stalls+families": {
+          "avg_ms": 0.032,
+          "worst_ms": 0.04
+        },
+        "body+cover": {
+          "avg_ms": 0.052,
+          "worst_ms": 7.83
+        },
+        "brawl": {
+          "avg_ms": 0.051,
+          "worst_ms": 0.08
+        },
+        "commands": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.02
+        },
+        "context": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.0
+        },
+        "daily+crops": {
+          "avg_ms": 0.005,
+          "worst_ms": 0.04
+        },
+        "fear": {
+          "avg_ms": 0.011,
+          "worst_ms": 0.01
+        },
+        "gunfire": {
+          "avg_ms": 0.001,
+          "worst_ms": 0.0
+        },
+        "jobs_refresh": {
+          "avg_ms": 0.33,
+          "worst_ms": 5.58
+        },
+        "law": {
+          "avg_ms": 0.127,
+          "worst_ms": 1.78
+        },
+        "local_combat+route": {
+          "avg_ms": 0.004,
+          "worst_ms": 0.01
+        },
+        "market": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.12
+        },
+        "planner": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.0
+        },
+        "player+needs+shotgun": {
+          "avg_ms": 0.016,
+          "worst_ms": 0.12
+        },
+        "recipes": {
+          "avg_ms": 0.05,
+          "worst_ms": 0.14
+        },
+        "regional": {
+          "avg_ms": 0.018,
+          "worst_ms": 0.06
+        },
+        "residents": {
+          "avg_ms": 0.333,
+          "worst_ms": 9.26
+        },
+        "society": {
+          "avg_ms": 0.002,
+          "worst_ms": 0.03
+        },
+        "speech": {
+          "avg_ms": 0.003,
+          "worst_ms": 0.17
+        },
+        "weather+unarmed": {
+          "avg_ms": 0.01,
+          "worst_ms": 0.01
+        }
+      },
+      "ticks": 300,
+      "total_ms": 316.1
+    }
+  ],
+  "save_ms": 494.664,
+  "setup_ms": 3062.065
+}

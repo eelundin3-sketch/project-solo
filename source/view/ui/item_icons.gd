@@ -55,6 +55,13 @@ static func draw(canvas: CanvasItem, item: String, c: Vector2, alpha: float) -> 
 		"ore":
 			canvas.draw_colored_polygon(PackedVector2Array([c + Vector2(-12, 6), c + Vector2(-9, -6), c + Vector2(2, -11), c + Vector2(12, -2), c + Vector2(9, 7)]), Color("7d7a6e", alpha))
 			canvas.draw_circle(c + Vector2(-2, -3), 2.3, Color("d09a52", alpha))
+		"lantern":   # a tin lantern: ring handle, glass with a flame, a base
+			canvas.draw_arc(c + Vector2(0, -11), 4.5, PI, TAU, 10, dark, 1.6)
+			canvas.draw_rect(Rect2(c + Vector2(-7, -9), Vector2(14, 3)), Color("5f666a", alpha))
+			canvas.draw_rect(Rect2(c + Vector2(-6, -6), Vector2(12, 12)), Color("f2c66b", alpha * 0.85))
+			canvas.draw_circle(c + Vector2(0, 1), 2.6, Color("fff1c2", alpha))
+			canvas.draw_rect(Rect2(c + Vector2(-6, -6), Vector2(12, 12)), dark, false, 1.2)
+			canvas.draw_rect(Rect2(c + Vector2(-8, 6), Vector2(16, 4)), Color("5f666a", alpha))
 		_:
 			canvas.draw_rect(Rect2(c + Vector2(-9, -9), Vector2(18, 18)), light)
 

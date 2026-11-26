@@ -12,7 +12,8 @@ func _initialize() -> void:
 	var sim := Sim.new(); sim.start_game(); var s: Dictionary = sim.state
 	for key in ["1", "2", "3"]:
 		var ids: Array = Sheriff.roster(s, int(key))
-		check(ids.size() >= 2 and ids.size() <= 3, "Town %s has 2-3 sheriffs (%d)" % [key, ids.size()])
+		var wanted: int = load("res://sim/settlement/capital.gd").sheriffs_wanted(s, int(key))   # 3; 5 in the capital
+		check(ids.size() == wanted, "Town %s has %d sheriffs (%d)" % [key, wanted, ids.size()])
 		for id in ids:
 			check(String(s.entities[str(id)].name).begins_with("Sheriff "), "Every sheriff is dressed and named")
 		var beds: Array = []

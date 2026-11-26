@@ -13,11 +13,11 @@ A single-player, top-down 2D **living frontier sandbox**. Every resident pursues
 - **Three towns**, far apart on a 582 by 420 cell map (1 cell = 1 m): **Alder Hollow** (west, forested, the starting town), **Reedbank** (east), **Dustvale** (far south, dry country, adobe and stone, a big iron rock to mine). 6 residents each at the start, plus the player.
 - **Roads** link the towns with shared trunks that fork, planned around rocks, buildings and fields (`sim/world/road_planner.gd`); **signposts** at the forks name each town with its distance in paces and point down each road **[owner: realistic roads, signposts]**. Walking is about 15% quicker on town streets and 30% on the roads between towns (`sim/movement/pace.gd`) **[owner]**.
 - About 6,300 trees form real forests with clearings around houses, doors, workshops, fields and roads. 13 house types; each household lives in a home with a pantry and a garden.
-- **Weather** is one global record (clear, rain, fog, snow) re-rolled every hour (3,600 ticks); seasons are 7-day blocks (`sim/world/weather.gd`). The game logic reads it for the player's wet and cold conditions and for how muddy you get; there is no per-town weather and no effect on crops yet (the view also draws it).
+- **Weather** is per town (clear, rain, fog, snow), re-rolled every 6 game hours from each town's climate (Reedbank wet, Dustvale dry). Drought slows crops, rain makes road mud, fog shortens sight. **Seasons are 15 days**, and a game opens on the first day of summer **[owner]**; winter stops crops and the farmers cut wood or mine (`sim/world/weather.gd`, `sim/farming/crops.gd`).
 
 ## 3. Time and the daily rhythm
 
-1 tick = 0.1 s at 1x; 600 ticks = 1 hour; **14,400 ticks = 1 day** (about 24 real minutes). Tick 0 is midnight.
+1 tick = 0.1 s at 1x; 600 ticks = 1 hour; **14,400 ticks = 1 day** (about 24 real minutes). A new game starts at 07:00 on day 1 **[owner]**. **The day has four parts [owner]:** morning 04:00-10:00, day 10:00-16:00, evening 16:00-22:00, night 22:00-04:00. The sun rises in the east at 05:00, is highest at 13:00 and sets in the west at 21:00, and shadows follow it. People get up between 06:00 and 07:00 and go to bed between 21:00 and 22:00, each at their own fixed time (`sim/world/day_clock.gd`). The table below predates this and some hours in it have moved: shopping 07:30, garden chores 07:00-08:30 and 17:30-19:30, shops open 07:00-21:00, street lamps 20:00-05:00.
 
 | Time | What happens | Where |
 |---|---|---|

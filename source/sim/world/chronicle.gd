@@ -14,6 +14,7 @@ static func entries(s: Dictionary) -> Array:
 ## Everyone awake and in sight of `cell`, within SIGHT cells, except those listed, in id order.
 static func witnesses(s: Dictionary, cell: Array, except: Array = []) -> Array:
 	var result: Array = []
+	var reach: int = SIGHT * int(load("res://sim/world/weather.gd").sight_scale(s, cell)) / 100   # fog
 	var keys: Array = s.get("residents", {}).keys()
 	keys.sort_custom(func(a, b) -> bool: return int(a) < int(b))
 	for key in keys:
@@ -21,8 +22,8 @@ static func witnesses(s: Dictionary, cell: Array, except: Array = []) -> Array:
 		if int(npc.id) in except or int(npc.get("health", 0)) <= 0: continue
 		if not npc.get("sleeping", {}).is_empty() or not npc.get("knock", {}).is_empty() or not npc.get("migration", {}).is_empty(): continue
 		var at: Array = s.entities[key].cell
-		if absi(at[0] - cell[0]) > SIGHT or absi(at[1] - cell[1]) > SIGHT: continue
-		if Vector2(at[0] - cell[0], at[1] - cell[1]).length() > float(SIGHT): continue
+		if absi(at[0] - cell[0]) > reach or absi(at[1] - cell[1]) > reach: continue
+		if Vector2(at[0] - cell[0], at[1] - cell[1]).length() > float(reach): continue
 		if Cover.line_clear(s, at, cell): result.append(int(npc.id))
 	return result
 

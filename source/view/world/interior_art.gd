@@ -142,8 +142,6 @@ static func oven(c: Node2D, p: Vector2, phase: float, active: bool, grain: int, 
 	var glow: float = (0.6 + 0.4 * sin(phase * 0.8)) if active else 0.22
 	Props.ellipse(c, p + Vector2(31, 28), Vector2(8, 5), Color(0.95, 0.5, 0.15, glow))
 	Props.ellipse(c, p + Vector2(31, 29), Vector2(4.5, 2.8), Color(1.0, 0.82, 0.35, glow))
-	c.draw_line(p + Vector2(46, -16), p + Vector2(46, 4), Color("4d4a42"), 6, true)
-	c.draw_line(p + Vector2(44.5, -16), p + Vector2(44.5, 4), Color("77756a"), 1.2, true)
 	timber(c, Rect2(p + Vector2(60, 16), Vector2(34, 6)), Color("9c7049"), 3.0)
 	for i in range(mini(4, ceili(loaves / 4.0))):
 		Props.ellipse(c, p + Vector2(66 + i * 7, 13), Vector2(4.5, 3.0), Color("c98f4b"), 0.0, Color("8d5d2e"), 0.7)
@@ -157,7 +155,6 @@ static func forge(c: Node2D, p: Vector2, phase: float, active: bool) -> void:
 	var glow: float = (0.7 + 0.3 * sin(phase * 1.1)) if active else 0.25
 	Props.ellipse(c, p + Vector2(28, 22), Vector2(15, 7), Color(0.9, 0.38, 0.1, glow), 0.0, INK, 0.8)
 	Props.ellipse(c, p + Vector2(28, 23), Vector2(8, 3.6), Color(1.0, 0.78, 0.3, glow))
-	c.draw_line(p + Vector2(42, -14), p + Vector2(42, 8), Color("45443f"), 6, true)
 	timber(c, Rect2(p + Vector2(60, 24), Vector2(10, 12)), Color("7a5a3a"), 2.0)
 	slab(c, Rect2(p + Vector2(54, 16), Vector2(22, 8)), Color("4b4f53"), 2.0)
 	c.draw_line(p + Vector2(76, 19), p + Vector2(84, 21), Color("4b4f53"), 3.0, true)

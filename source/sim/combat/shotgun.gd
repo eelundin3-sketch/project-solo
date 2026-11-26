@@ -207,5 +207,11 @@ static func _strike(sim: RefCounted, surface: String, cell: Array, pellet: Dicti
 			if s.residents.has(key) and was_alive and s.residents[key].health == 0:
 				sim.record(entity.name + " was shot and is incapacitated.")
 				if pellet.owner == s.player:   # remembered as a killing, by family and witnesses
-					load("res://sim/law/law.gd").remember_crime(s, int(s.residents[key].settlement), "murder", int(entity.id))
+					var town: int = int(s.residents[key].settlement)
+					load("res://sim/law/law.gd").remember_crime(s, town, "murder", int(entity.id))
+					var seen: Array = load("res://sim/world/chronicle.gd").witnesses(s, cell, [int(entity.id)])
+					if town != 0 and not seen.is_empty():
+						# Seen: it is filed as murder, and someone runs to the next town for help.
+						load("res://sim/law/law.gd").file(s, town, "murder", load("res://sim/law/witness_reports.gd").description(s), false)
+						load("res://sim/law/reinforcements.gd").on_killing(sim, town, cell, seen)
 			break

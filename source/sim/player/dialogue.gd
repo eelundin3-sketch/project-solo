@@ -29,12 +29,25 @@ static func options(s: Dictionary, target: int) -> Array:
 	var Talk = load("res://sim/player/talk.gd")
 	var trouble: Array = Talk.trouble_options(s, npc)
 	if not trouble.is_empty(): return trouble
-	var result: Array = load("res://sim/player/requests.gd").talk_options(s, npc)
+	var Conversation = load("res://sim/player/conversation.gd")
+	var situation: Array = Conversation.options(s, npc)
+	if int(npc.get("bandit", 0)) != 0: return situation   # outlaws talk about one thing only
+	var result: Array = Talk.wanted_options(s, npc) + situation + load("res://sim/player/requests.gd").talk_options(s, npc)
 	result += [
 		{"id": "ask_work", "label": "What do you do for a living?", "enabled": true, "reason": ""},
 		{"id": "ask_family", "label": "How is your family keeping?", "enabled": true, "reason": ""},
 		{"id": "ask_news", "label": "Heard any news?", "enabled": true, "reason": ""}]
-	return result + Talk.tone_options(s, npc)
+	return paged(s, result + Talk.tone_options(s, npc))
+
+## The window shows at most PAGE_SIZE + 1 lines: the most pressing first, the rest behind "More…".
+const PAGE_SIZE := 6
+static func paged(s: Dictionary, all: Array) -> Array:
+	if all.size() <= PAGE_SIZE + 1: return all
+	var pages: int = (all.size() + PAGE_SIZE - 1) / PAGE_SIZE
+	var page: int = int(s.get("player_control", {}).get("talk_page", 0)) % pages
+	var result: Array = all.slice(page * PAGE_SIZE, mini(all.size(), (page + 1) * PAGE_SIZE))
+	result.append({"id": "c_more", "label": "More…" if page < pages - 1 else "Back to the start…", "enabled": true, "reason": ""})
+	return result
 
 ## How this person feels about the player, in a word and a colour name for the window.
 static func feeling(s: Dictionary, npc: Dictionary) -> Array:

@@ -12,13 +12,21 @@ static func request_path(state: Dictionary, start: Array, goal: Array) -> Dictio
 static func request_travel_path(state: Dictionary, start: Array, goal: Array) -> Dictionary:
 	return _search(state, start, goal, true)
 
-static func _search(state: Dictionary, start: Array, goal: Array, by_road: bool) -> Dictionary:
+## An everyday walk about town (to work, home, the shops): it joins the nearest road and follows
+## it, cutting across only where that saves a fair bit (nav_grid.gd street_grid). Short hops take
+## the plain shortest way. Fights, flight and chases use request_path, straight at it.
+const SHORT_HOP := 8
+static func request_walk_path(state: Dictionary, start: Array, goal: Array) -> Dictionary:
+	if absi(int(goal[0]) - int(start[0])) + absi(int(goal[1]) - int(start[1])) <= SHORT_HOP: return _search(state, start, goal, false)
+	return _search(state, start, goal, false, true)
+
+static func _search(state: Dictionary, start: Array, goal: Array, by_road: bool, by_street: bool = false) -> Dictionary:
 	if not World.walkable(state, start) or not World.walkable(state, goal):
 		return {"ok": false, "error_code": "BLOCKED_ENDPOINT", "path": []}
 	if start == goal:
 		return {"ok": true, "error_code": "", "path": []}
 	Probe.count("astar_calls")
-	var grid := NavGrid.travel_grid(state) if by_road else NavGrid.grid(state)
+	var grid := NavGrid.travel_grid(state) if by_road else (NavGrid.street_grid(state) if by_street else NavGrid.grid(state))
 	var cells: Array[Vector2i] = grid.get_id_path(Vector2i(start[0], start[1]), Vector2i(goal[0], goal[1]))
 	if cells.size() < 2:
 		return {"ok": false, "error_code": "UNREACHABLE", "path": []}

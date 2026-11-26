@@ -26,6 +26,14 @@ func run() -> void:
 		sim.step()
 		if load("res://sim/economy/stall_service.gd").staffed(s, tent): break
 	sim.submit("haggle", {"target": tent.id}); sim.step()
+	# Price trends (milestone 5): yesterday's prices were different, and Reedbank's are known.
+	var Market = load("res://sim/economy/market.gd")
+	Market.snapshot_trend(s)
+	for key in s.markets["1"].trend: s.markets["1"].trend[key] = int(s.markets["1"].trend[key]) + (2 if key in ["food", "rye"] else -2)
+	var known: Dictionary = load("res://sim/player/player_status.gd").part(s, "known_prices", {})
+	var prices := {}
+	for item in Market.BASE: prices[item] = {"buy": maxi(1, Market.quote(s, 1, item, true) - 4), "sell": Market.quote(s, 1, item, false) + 4}
+	known["2"] = {"tick": s.tick, "prices": prices}
 	main.clock.paused = true
 	for settle in range(12): await process_frame
 	await RenderingServer.frame_post_draw

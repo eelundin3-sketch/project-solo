@@ -2,6 +2,7 @@ extends Node2D
 const Simulation = preload("res://sim/core/simulation.gd")
 const Clock = preload("res://sim/core/sim_clock.gd")
 const Save = preload("res://sim/persistence/save_manager.gd")
+const Activities = preload("res://sim/player/activities.gd")
 const Settings = preload("res://app/input_settings.gd")
 const PlayerPanels = preload("res://view/ui/player_panels.gd")
 const Health = preload("res://sim/combat/body_health.gd")
@@ -20,6 +21,7 @@ const ContextMenu = preload("res://view/ui/context_menu.gd")
 const ContextActions = preload("res://sim/player/context_actions.gd")
 const MainMenu = preload("res://view/ui/main_menu.gd")
 const JournalWindow = preload("res://view/ui/journal_window.gd")
+const PauseMenu = preload("res://view/ui/pause_menu.gd")
 const KnockoutScreen = preload("res://view/ui/knockout_screen.gd")
 const Law = preload("res://sim/law/law.gd")
 const Probe = preload("res://sim/diagnostics/perf_probe.gd")
@@ -65,6 +67,8 @@ var skipping: bool = false
 const SLEEP_SPEED := 8
 var medieval_map: Control
 var journal: Control
+var pause_menu: CanvasLayer           # Esc while playing (pause_menu.gd)
+var paused_before_menu: bool = false   # the clock's state when the pause menu opened
 var context_part: String = ""   # the furniture or fixture the open menu is about
 var skip_previous_speed: int = 1
 var menu_active: bool = false
@@ -124,6 +128,9 @@ func _ready() -> void:
 	journal.simulation = simulation
 	journal.visible = false
 	menu_layer.add_child(journal)
+	pause_menu = PauseMenu.new()
+	add_child(pause_menu)
+	pause_menu.chosen.connect(_on_pause_chosen)
 	var perf_layer := CanvasLayer.new()
 	perf_layer.layer = 8
 	add_child(perf_layer)
@@ -133,7 +140,7 @@ func _ready() -> void:
 	knockout = KnockoutScreen.new()
 	add_child(knockout)
 	knockout.skip_requested.connect(_skip_ahead)
-	knockout.wait_requested.connect(_skip_ahead)
+	knockout.wait_requested.connect(_wait_out)
 	knockout.load_requested.connect(func() -> void: handle_action("load"))
 	knockout.new_game_requested.connect(func() -> void:
 		Engine.set_meta("skip_title", true)
@@ -155,13 +162,16 @@ func _maybe_open_menu() -> void:
 	if get_tree().current_scene != self: return
 	if Engine.has_meta("skip_title"):
 		Engine.remove_meta("skip_title")   # "New game" from the death screen goes straight in
+		_begin_at_home()
 		return
 	menu_active = true
 	menu = MainMenu.new()
 	var newest: Dictionary = SaveSlots.newest(save_dir, [save_path])
 	if not newest.is_empty(): menu.continue_text = SaveSlots.describe(newest.info)
 	add_child(menu)
-	menu.start_requested.connect(_start_from_menu)
+	menu.start_requested.connect(func() -> void:
+		_begin_at_home()
+		_start_from_menu())
 	menu.quit_requested.connect(func() -> void: get_tree().quit())
 	menu.continue_requested.connect(func() -> void:
 		handle_action("load")
@@ -183,6 +193,11 @@ func _set_hud_visible(shown: bool) -> void:
 	$DebugHUD.visible = shown
 	if not shown: player_panels.show_mode("")
 
+## A new game starts in your house, in the middle of one of the things there (a workout, a drink
+## from the fridge, resting on the bed, the sofa): a different one each new game.
+func _begin_at_home() -> void:
+	Activities.begin_at_home(simulation, int(Time.get_ticks_usec() ^ int(Time.get_unix_time_from_system())))
+
 ## A slow drift over the countryside around the first town.
 func _menu_camera(t: float) -> Vector2:
 	return Vector2(66, 54) * CELL + Vector2(sin(t * 0.045) * 1150.0, sin(t * 0.031 + 1.0) * 560.0)
@@ -198,9 +213,118 @@ func _start_from_menu() -> void:
 	intro_tween.tween_property($ObserverCamera, "zoom", Vector2.ONE * 2.0, 1.6).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	intro_tween.tween_callback(_finish_intro)
 
+# --- a long sentence passes in a few seconds -------------------------------------------------------
+
+const CATCH_UP_OVER := 2400       # ticks: sentences longer than four hours are caught up, not fast-forwarded
+const CATCH_UP_BUDGET := 12000    # microseconds of simulation a frame while catching up
+var catching_up: bool = false
+var catch_up_card: CanvasLayer
+var catch_up_clock: Label
+var catch_up_bar: ProgressBar
+var catch_up_total: int = 1
+
+## "Wait it out": a long sentence is caught up behind a card (the world simulated flat out, nothing
+## drawn); a short one fast-forwards as before.
+func _wait_out() -> void:
+	var jail: Dictionary = simulation.state.get("player_control", {}).get("jail", {})
+	var left: int = int(jail.get("until", 0)) - int(simulation.state.tick)
+	if not jail.is_empty() and not bool(jail.get("releasing", false)) and left > CATCH_UP_OVER: _start_catch_up(left)
+	else: _skip_ahead()
+
+func _start_catch_up(left: int) -> void:
+	if catch_up_card == null: _build_catch_up_card()
+	catching_up = true
+	catch_up_total = maxi(1, left - JAIL_WAIT_STOP)
+	catch_up_card.visible = true
+	world_audio.stop_effects()
+	_catch_up_labels()
+
+func _catch_up_frame() -> void:
+	var s: Dictionary = simulation.state
+	var started := Time.get_ticks_usec()
+	while Time.get_ticks_usec() - started < CATCH_UP_BUDGET:
+		var jail: Dictionary = s.get("player_control", {}).get("jail", {})
+		if jail.is_empty() or bool(jail.get("releasing", false)) or int(jail.until) - int(s.tick) <= JAIL_WAIT_STOP or bool(s.player_control.get("dead", false)):
+			_end_catch_up()
+			return
+		simulation.step()
+	_catch_up_labels()
+
+func _end_catch_up() -> void:
+	catching_up = false
+	if catch_up_card != null: catch_up_card.visible = false
+	clock.accumulator = 0
+	$WorldView.snap_visuals()
+	simulation.state.player_control.notice = "Two minutes left."
+	refresh_view()
+
+func _catch_up_labels() -> void:
+	var s: Dictionary = simulation.state
+	var jail: Dictionary = s.get("player_control", {}).get("jail", {})
+	var left: int = maxi(0, int(jail.get("until", s.tick)) - int(s.tick) - JAIL_WAIT_STOP)
+	var minute: int = (int(s.tick) / 10) % 1440
+	catch_up_clock.text = "Day %d · %02d:%02d" % [int(s.tick) / 14400 + 1, minute / 60, minute % 60]
+	catch_up_bar.value = 100.0 * (1.0 - float(left) / float(catch_up_total))
+
+func _build_catch_up_card() -> void:
+	catch_up_card = CanvasLayer.new()
+	catch_up_card.layer = 40
+	add_child(catch_up_card)
+	var dark := ColorRect.new()
+	dark.color = Color(0.04, 0.035, 0.03, 1.0)
+	dark.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	catch_up_card.add_child(dark)
+	var column := VBoxContainer.new()
+	column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	column.offset_left = -200
+	column.offset_right = 200
+	column.offset_top = -60
+	column.offset_bottom = 60
+	column.add_theme_constant_override("separation", 12)
+	catch_up_card.add_child(column)
+	var title := Label.new()
+	title.text = "Time passes…"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", Color("efe3c6"))
+	column.add_child(title)
+	catch_up_clock = Label.new()
+	catch_up_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	catch_up_clock.add_theme_font_size_override("font_size", 18)
+	catch_up_clock.add_theme_color_override("font_color", Color("b9a98a"))
+	column.add_child(catch_up_clock)
+	catch_up_bar = ProgressBar.new()
+	catch_up_bar.custom_minimum_size = Vector2(400, 10)
+	catch_up_bar.show_percentage = false
+	column.add_child(catch_up_bar)
+	var hint := Label.new()
+	hint.text = "Serving your sentence · Esc to stop"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", Color("8f826a"))
+	column.add_child(hint)
+	catch_up_card.visible = false
+
+## Waiting out a jail sentence: the fast-forward stops with two in-game minutes left (looking one
+## frame ahead so it never overshoots), so the release plays out at the speed you had.
+const JAIL_WAIT_STOP := 20   # ticks: two in-game minutes
+func _stop_jail_wait(delta: float) -> void:
+	if not skipping: return
+	var jail: Dictionary = simulation.state.get("player_control", {}).get("jail", {})
+	if jail.is_empty() or bool(jail.get("releasing", false)): return
+	var left: int = int(jail.until) - int(simulation.state.tick)
+	var next_frame: int = ceili(minf(delta, 0.1) * 10.0 * float(clock.speed)) + 1
+	if left <= JAIL_WAIT_STOP + next_frame:
+		skipping = false
+		clock.speed = skip_previous_speed
+		clock.accumulator = 0
+		simulation.state.player_control.notice = "Two minutes left."
+
 ## Knocked out: run time at top speed until the player comes round, then back to the usual speed.
 func _skip_ahead(fast: int = 40) -> void:
 	if skipping: return
+	var jail: Dictionary = simulation.state.get("player_control", {}).get("jail", {})
+	if not jail.is_empty() and int(jail.until) - int(simulation.state.tick) <= JAIL_WAIT_STOP + 2: return   # nearly done: no point
 	skipping = true
 	skip_previous_speed = clock.speed
 	clock.paused = false
@@ -216,6 +340,9 @@ func _finish_intro() -> void:
 
 func _process(delta: float) -> void:
 	if perf != null: perf.sample(delta)
+	if catching_up:
+		_catch_up_frame()
+		return   # nothing of the world is drawn or animated while time passes
 	if menu_active and intro_tween == null:
 		menu_time += delta
 		$ObserverCamera.position = _menu_camera(menu_time)
@@ -240,6 +367,7 @@ func _process(delta: float) -> void:
 	var route_active: bool = not simulation.state.get("player_path", []).is_empty()
 	if route_active and Input.is_key_pressed(KEY_SHIFT) != bool(simulation.state.player_control.get("travel_run", false)):
 		simulation.submit("travel_run", {"run": Input.is_key_pressed(KEY_SHIFT)})
+	_stop_jail_wait(delta)
 	var started := Time.get_ticks_usec()
 	var advanced: int = clock.advance(delta, simulation)
 	Probe.add("f:simulation", Time.get_ticks_usec() - started)
@@ -335,7 +463,7 @@ func handle_action(kind: String) -> void:
 			player_panels.toggle("health")
 		"interact":
 			if player_panels.visible: player_panels.show_mode("")
-			elif Law.standoff_sheriff(simulation.state) != 0: simulation.submit("surrender")
+			elif Law.standoff_sheriff(simulation.state) != 0 or not simulation.state.get("player_control", {}).get("captive", {}).is_empty(): simulation.submit("surrender")
 			else: simulation.submit("interact",{"target":selected_id})
 		"injury_demo": simulation.submit("debug_injury",{"part":"right_forearm","damage":24,"kind":"cut"})
 		"encounter_demo": simulation.submit("demo_encounter")
@@ -391,6 +519,21 @@ func handle_action(kind: String) -> void:
 
 func _input(event: InputEvent) -> void:
 	if menu_active: return
+	if catching_up:
+		# Time passing behind the card: Esc stops it there; nothing else gets through.
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+			catching_up = false
+			catch_up_card.visible = false
+			clock.accumulator = 0
+			$WorldView.snap_visuals()
+		get_viewport().set_input_as_handled()
+		return
+	if is_paused_menu():
+		# The pause menu is up: Esc resumes; everything else goes to its buttons (or nowhere).
+		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
+			close_pause_menu()
+			get_viewport().set_input_as_handled()
+		return
 	# Handle zoom before modal UI panels can consume trackpad/mouse scroll events.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and not event.pressed:
 		aiming = false
@@ -411,7 +554,7 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if menu_active: return
+	if menu_active or is_paused_menu(): return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed:
 			# Two quick right-clicks on the same spot: walk there by the shortest route.
@@ -498,7 +641,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				if journal.visible: journal.visible = false
 				elif map_mode: toggle_map()   # Esc closes the map first, then stops a travel, then closes panels
 				elif int(simulation.state.get("player_control", {}).get("travelling", 0)) != 0: simulation.submit("stop_travel")
-				else: player_panels.show_mode("")
+				elif player_panels.visible: player_panels.show_mode("")
+				else: open_pause_menu()   # nothing open: pause, with the pause menu
 			KEY_SPACE:
 				if not player_panels.visible and not clock.paused: _submit_strike("shove")
 			KEY_P: handle_action("pause")
@@ -512,6 +656,38 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F9: handle_action("load")
 			KEY_TAB: handle_action("follow")
 			KEY_F3: handle_action("observer")
+
+# --- the pause menu (Esc) ---------------------------------------------------------------------------
+
+func is_paused_menu() -> bool:
+	return pause_menu != null and pause_menu.visible
+
+func open_pause_menu() -> void:
+	if menu_active or is_paused_menu() or (knockout != null and knockout.visible): return
+	context_menu.close()
+	aiming = false
+	pointer_held = false
+	paused_before_menu = clock.paused
+	clock.paused = true
+	pause_menu.open(not SaveSlots.newest(save_dir, [save_path]).is_empty())
+
+func close_pause_menu() -> void:
+	if not is_paused_menu(): return
+	pause_menu.close()
+	clock.paused = paused_before_menu
+
+func _on_pause_chosen(id: String) -> void:
+	match id:
+		"resume": close_pause_menu()
+		"save":
+			handle_action("save")
+			pause_menu.status.text = $DebugHUD.notice.text
+			pause_menu.buttons.load.disabled = false
+		"load":
+			close_pause_menu()
+			handle_action("load")
+		"title": get_tree().reload_current_scene()
+		"quit": get_tree().quit()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:

@@ -26,6 +26,7 @@ func _initialize() -> void:
 	var families := 0
 	for household in s.households.values():
 		var home: Dictionary = s.entities[str(household.home)]
+		if home.kind in ["town_hall", "saloon"]: continue   # the governor and the barkeep live where they work
 		check(home.has("house_type"), "Every household has a house of its own (%s)" % home.name)
 		var beds := 0
 		for item in home.get("furniture", []): if item.kind == "bed": beds += 1

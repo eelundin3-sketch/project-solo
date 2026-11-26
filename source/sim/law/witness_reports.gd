@@ -12,6 +12,7 @@ const REPATH_TICKS := 60
 const GIVE_UP_TICKS := 1800    # three hours of looking for a sheriff
 const ARRIVE := 2.5            # cells from the sheriff to tell him
 const MAX_HIDDEN := 30
+const BACKED_OFF := 5.0        # a confronted player this far off has backed down
 
 static func _law() -> GDScript: return load("res://sim/law/law.gd")
 
@@ -23,7 +24,7 @@ static func tellers(s: Dictionary, entry: Dictionary, victim: int) -> Array:
 	for id in candidates:
 		var npc: Dictionary = s.get("residents", {}).get(str(id), {})
 		if npc.is_empty() or int(npc.get("health", 0)) <= 0 or Brawl.knocked(s, npc) or not npc.get("sleeping", {}).is_empty(): continue
-		if npc.occupation == "Child" or not npc.get("reporting", {}).is_empty(): continue
+		if npc.occupation in ["Child", "Bandit"] or not npc.get("reporting", {}).is_empty(): continue
 		if not id in result: result.append(int(id))
 	result.sort()
 	return result
@@ -78,6 +79,17 @@ static func update(sim: RefCounted) -> void:
 			if s.tick - int(report.since) > 300: _finish(npc)   # no law left in town to tell
 			continue
 		var here: Array = s.entities[key].cell
+		if report.has("hold_until"):
+			# Standing up to you first: back off and they let it go; stay and they go for the sheriff.
+			var you: Array = s.entities[str(s.player)].cell
+			if Vector2(you[0] - here[0], you[1] - here[1]).length() > BACKED_OFF:
+				_law()._say(sim, int(npc.id), ["And stay away from me!", "Go on, get out of here!", "Don't come near me again."][int(npc.id) % 3])
+				_finish(npc)
+				npc.status = "Shaken"
+				continue
+			if s.tick < int(report.hold_until): continue
+			report.erase("hold_until")
+			_law()._say(sim, int(npc.id), "Right. I'm fetching the sheriff!")
 		var there: Array = s.entities[str(sheriff.id)].cell
 		if Vector2(there[0] - here[0], there[1] - here[1]).length() <= ARRIVE:
 			_tell(sim, npc, sheriff, report)
@@ -105,9 +117,26 @@ static func _nearest_sheriff(s: Dictionary, town: int, from: Array) -> Dictionar
 static func _tell(sim: RefCounted, npc: Dictionary, sheriff: Dictionary, report: Dictionary) -> void:
 	var s: Dictionary = sim.state
 	var Law: GDScript = _law()
+	if str(report.kind) in ["missing", "body"]:
+		var who: String = String(s.entities.get(str(report.victim), {}).get("name", "someone")).split(" ")[0]
+		Law._say(sim, int(npc.id), ("Sheriff! %s hasn't come home!" if str(report.kind) == "missing" else "Sheriff! We found %s... dead!") % who)
+		load("res://sim/law/investigation.gd").open(sim, int(report.town), int(report.victim), str(report.kind), sheriff)
+		_finish(npc)
+		return
+	if str(report.kind) == "sighting":
+		Law._say(sim, int(npc.id), "Sheriff! That wanted stranger is in town!")
+		load("res://sim/law/notoriety.gd").sighted(sim, sheriff, report.get("cell", s.entities[str(s.player)].cell))
+		_finish(npc)
+		return
+	if str(report.kind) == "outlaw":
+		Law._say(sim, int(npc.id), "Sheriff! There's one of those bandits in town!")
+		load("res://sim/law/outlaw_arrest.gd").reported(sim, int(report.town), int(report.victim), sheriff)
+		_finish(npc)
+		return
 	var what: String = {"theft": "robbed", "murder": "killed", "assault": "attacked", "kick": "beat", "shooting": "shot at", "assault_sheriff": "attacked"}.get(str(report.kind), "attacked")
 	var victim_name: String = String(s.entities.get(str(report.victim), {}).get("name", "someone")).split(" ")[0]
-	Law._say(sim, int(npc.id), "Sheriff! The stranger %s %s!" % [what, victim_name if int(report.victim) != int(npc.id) else "me"])
+	if str(report.kind) == "discharge": Law._say(sim, int(npc.id), "Sheriff! The stranger was firing a gun in town!")
+	else: Law._say(sim, int(npc.id), "Sheriff! The stranger %s %s!" % [what, victim_name if int(report.victim) != int(npc.id) else "me"])
 	Law.file(s, int(report.town), str(report.kind), report.outfit, false)
 	_finish(npc)
 

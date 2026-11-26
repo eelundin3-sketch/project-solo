@@ -165,6 +165,53 @@ static func quote(s: Dictionary, town_id: int, item: String, buying: bool) -> in
 	var estimate: int = clampi(int(BASE[item]) * int(TARGET[item]) / maxi(10, stock + int(TARGET[item]) / 2), 2, 100)
 	return clampi(estimate + (1 if buying else -1), 1, 100)
 
+## Price trends: once a day each market keeps the day's quotes, so the trade window can show
+## whether a price rose or fell since yesterday. Prices themselves only ever follow stock.
+static func snapshot_trend(s: Dictionary) -> void:
+	if not s.has("markets"): return
+	for key in s.markets:
+		var trend := {}
+		for item in BASE: trend[item] = quote(s, int(key), item, true)
+		s.markets[key].trend = trend
+
+## +1 if the buying price rose since yesterday's snapshot, -1 if it fell, 0 if unchanged or unknown.
+static func trend(s: Dictionary, town_id: int, item: String) -> int:
+	var before: int = int(s.get("markets", {}).get(str(town_id), {}).get("trend", {}).get(item, 0))
+	if before == 0: return 0
+	return signi(quote(s, town_id, item, true) - before)
+
+const KNOWN_REACH := 30      # within this many cells of a town's storehouse you see its prices
+const KNOWN_FRESH := 14400 * 3   # older known prices are shown greyed
+
+## The player remembers the prices of a town they are in (refreshed every hour while there).
+static func note_prices(s: Dictionary) -> void:
+	if not s.has("markets") or not s.has("player") or not s.has("settlements"): return
+	var Region = load("res://sim/world/region.gd")
+	var town: int = Region.of_player(s)
+	if town == 0 or not s.markets.has(str(town)): return
+	if Region.gap_squared(s, town, s.entities[str(s.player)].cell) > KNOWN_REACH * KNOWN_REACH: return
+	var known: Dictionary = load("res://sim/player/player_status.gd").part(s, "known_prices", {})
+	var prices := {}
+	for item in BASE: prices[item] = {"buy": quote(s, town, item, true), "sell": quote(s, town, item, false)}
+	known[str(town)] = {"tick": s.tick, "prices": prices}
+
+## The best price the player knows in another town for `item`, if it beats `here_price` by 3
+## or more: cheaper to buy (buying) or dearer to sell. {} when none.
+static func better_elsewhere(s: Dictionary, town_id: int, item: String, buying: bool, here_price: int) -> Dictionary:
+	var known: Dictionary = s.get("player_status", {}).get("known_prices", {})
+	var best := {}
+	var keys: Array = known.keys()
+	keys.sort()
+	for key in keys:
+		if int(key) == town_id or not s.settlements.has(str(key)): continue
+		var entry: Dictionary = known[key]
+		var price: int = int(entry.prices.get(item, {}).get("buy" if buying else "sell", 0))
+		if price <= 0: continue
+		var gain: int = (here_price - price) if buying else (price - here_price)
+		if gain >= 3 and (best.is_empty() or gain > int(best.gain)):
+			best = {"town": int(key), "name": s.settlements[str(key)].name, "price": price, "gain": gain, "stale": s.tick - int(entry.tick) > KNOWN_FRESH}
+	return best
+
 static func transact(s: Dictionary, seller: int, buyer: int, item: String, quantity: int, price: int, town_id: int) -> Dictionary:
 	if quantity <= 0 or price < 1 or price > 100 or seller == buyer or not BASE.has(item):
 		return Inventory.result(false, "INVALID_ORDER")

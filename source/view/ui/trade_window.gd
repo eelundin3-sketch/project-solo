@@ -271,9 +271,18 @@ func _ledger(area: Rect2, heading: String, items: Array, theirs: bool, s: Dictio
 		var stock: int = Inventory.amount(s, target if theirs else s.player, item)
 		var unit: int = _price(s, item, theirs)
 		draw_string(_serif, row.position + Vector2(52, 20), NAMES.get(item, item.capitalize()), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, INK)
-		draw_string(_sans, row.position + Vector2(52, 38), ("%d in stock" % stock) if theirs else ("you have %d" % stock), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, INK_SOFT)
+		var stock_text: String = ("%d in stock" % stock) if theirs else ("you have %d" % stock)
+		draw_string(_sans, row.position + Vector2(52, 38), stock_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, INK_SOFT)
+		var town: int = int(s.entities.get(str(target), {}).get("settlement", 1))
+		var elsewhere: Dictionary = Market.better_elsewhere(s, town, item, theirs, unit)
+		if not elsewhere.is_empty():
+			var hint: String = "· %s %d c" % [elsewhere.name, int(elsewhere.price)]   # cheaper there (buying) or dearer there (selling)
+			var x: float = 56.0 + _sans.get_string_size(stock_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+			draw_string(_sans, row.position + Vector2(x, 38), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(INK_SOFT, 0.45) if elsewhere.stale else Color("6b4a1e"))
 		var price_text := "%d c" % unit
 		draw_string(_serif, row.position + Vector2(row.size.x - 156, 30), price_text, HORIZONTAL_ALIGNMENT_RIGHT, 52, 16, INK)
+		var price_width: float = _serif.get_string_size(price_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		_trend_arrow(row.position + Vector2(row.size.x - 112 - price_width, 25), Market.trend(s, town, item))
 		var purse: int = int(s.accounts.get(str(s.player if theirs else target), 0))
 		var can_one: bool = stock >= 1 and purse >= unit
 		var color: Color = BUY if theirs else SELL
@@ -283,6 +292,14 @@ func _ledger(area: Rect2, heading: String, items: Array, theirs: bool, s: Dictio
 		else:
 			_button(Rect2(row.position + Vector2(row.size.x - 98, 9), Vector2(44, 28)), "Sell 1", "trade", {"target": target, "item": item, "buy": false, "quantity": 1}, can_one, color)
 			_button(Rect2(row.position + Vector2(row.size.x - 50, 9), Vector2(48, 28)), "All", "trade", {"target": target, "item": item, "buy": false, "quantity": -1}, can_one, color)
+
+## A small arrow beside a price: up (dearer than yesterday) or down (cheaper); nothing if the same.
+func _trend_arrow(at: Vector2, direction: int) -> void:
+	if direction == 0: return
+	var up: bool = direction > 0
+	var tip := at + Vector2(0, -4 if up else 4)
+	var points := PackedVector2Array([tip, at + Vector2(-4, 3 if up else -3), at + Vector2(4, 3 if up else -3)])
+	draw_colored_polygon(points, Color("9b3a2a") if up else Color("3f6b34"))
 
 func _button(rect: Rect2, text: String, kind: String, payload: Dictionary, enabled: bool, color: Color) -> void:
 	var index: int = buttons.size()

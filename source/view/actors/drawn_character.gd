@@ -1,6 +1,10 @@
 extends Node2D
 ## A vector cutout puppet. Direction changes the silhouette, linework and layer
 ## order; each piece is drawn directly in the same canvas as the world.
+## The figure is drawn at CHAR_SCALE: a bar in its hands is drawn this much larger so it matches the racks.
+const BAR_SIZE := 1.6
+const BAR_HALF := 40.0
+const HomeArt = preload("res://view/world/home_art.gd")
 const Props = preload("res://view/world/prop_art.gd")
 const Director = preload("res://view/actors/animation_director.gd")
 const BuildMotion = preload("res://view/actors/build_motion.gd")
@@ -108,6 +112,8 @@ const GETUP_KEYS: Array = [
 var pants_color: Color = PANTS
 var boot_color: Color = BOOT
 var hat_item: String = "<legacy>"
+var long_coat := false        # a duster or long coat hangs to the knees
+var mask_item := ""           # a bandana over the lower face ("bandana:N")
 var wears_badge := false
 ## Underwear only: no shirt shows bare arms (and chest, without a vest); no trousers shows bare legs and boxers.
 var bare_arms := false
@@ -148,7 +154,7 @@ func set_pose(value: Dictionary, delta: float = -1.0) -> void:
 			queue_redraw()
 	var next_position: Vector2 = value.get("position", Vector2.ZERO)
 	var snap := delta < 0.0 or frame.is_empty() or position.distance_to(next_position) > 96.0
-	var changed: bool = pose.get("action") != value.get("action") or pose.get("ready", false) != value.get("ready", false)
+	var changed: bool = pose.get("action") != value.get("action") or pose.get("ready", false) != value.get("ready", false) or pose.get("stage", "") != value.get("stage", "")
 	if not snap and not changed and blend_from.is_empty() and pose == value: return
 	if snap:
 		blend_from.clear()
@@ -157,6 +163,7 @@ func set_pose(value: Dictionary, delta: float = -1.0) -> void:
 		blend_elapsed = 0.0
 		var action: String = value.get("action", "idle")
 		blend_duration = 0.18 if action in ["rest", "down", "idle"] else 0.13
+		if action in ["squat", "bench", "deadlift", "pullup", "fridge", "sit"]: blend_duration = 0.24   # one step of a lift flows into the next
 		if action in ["hit", "stagger"]: blend_duration = 0.08
 		if action == "shoot": blend_duration = 0.045
 	else:
@@ -661,6 +668,73 @@ func _build_frame() -> Dictionary:
 		hip += _joint(0, 0, -dip)
 		chest += _joint(0, 0, -dip) + _joint(float(bad_side) * 1.0, 0, 0)
 		head += _joint(0, 0, -dip)
+	# Sitting: in a chair (hips at seat height, thighs forward, shins down, hands in the lap) or on
+	# the ground (knees up). Tied: on the ground, arms bound behind the back.
+	if action in ["sit", "tied", "cook"]:
+		var ground: bool = action in ["tied", "cook"] or bool(pose.get("sit_ground", false))
+		var seat: float = 4.0 if ground else 13.0
+		var breathe: float = sin((float(pose.get("age", 0.0)) + float(posmod(actor_id, 17)) * 0.7) * TAU / 3.6) * 0.6
+		hip = _joint(0, -1.0, seat)
+		chest = _joint(0, 1.5 + (2.0 if action == "tied" else 0.0), seat + (CHEST_HEIGHT - HIP_HEIGHT) - 1.0 + breathe)
+		head = _joint(0, 3.0 + (2.5 if action == "tied" else 0.0), seat + (HEAD_HEIGHT - HIP_HEIGHT) - 2.0 + breathe * 0.6)
+		for side in [-1, 1]:
+			var knee_at: Vector2 = _joint(side * 5.6, 10.0, seat + (8.5 if ground else 0.5))
+			var foot_at: Vector2 = _joint(side * 5.0, 16.0 if ground else 11.5, 1.5)
+			var leg := PackedVector2Array([hip + _joint(side * 5.3, 0, 0), knee_at, foot_at])
+			if side < 0: left_leg = leg
+			else: right_leg = leg
+			var shoulder: Vector2 = chest + _joint(side * 9.4, 0, 0)
+			var elbow: Vector2
+			var hand: Vector2
+			if action == "tied":
+				elbow = shoulder + _joint(side * 5.0, -3.5, -8.0)
+				hand = hip + _joint(side * 1.4, -5.0, 5.0)
+			elif action == "cook" and side > 0:
+				# Stirring the pot: the right hand reaches forward and circles.
+				var stir: float = float(pose.get("age", 0.0)) * TAU * 0.7
+				hand = chest + _joint(4.0 + cos(stir) * 2.5, 15.0 + sin(stir) * 2.5, -16.0)
+				elbow = shoulder.lerp(hand, 0.5) + _joint(side * 3.0, 0, -4.0)
+			else:
+				elbow = shoulder + _joint(side * 4.5, 3.5, -8.5)
+				hand = knee_at.lerp(hip, 0.45) + _joint(side * -1.0, 0, 3.0)
+			arms[side] = PackedVector2Array([shoulder, elbow, hand])
+		tilt = 0.0
+		origin = Vector2.ZERO
+	# At home: the lifts and the fridge, every stage (activities.gd drives stage and phase).
+	var barbell: Array = []
+	var bottle := Vector2.INF
+	var bar_scale_home := 1.0
+	if action in ["squat", "bench", "deadlift", "pullup", "fridge"]:
+		var home: Dictionary = _home_pose(action, str(pose.get("stage", "")), phase, bool(pose.get("bar", false)))
+		hip = home.hip; chest = home.chest; head = home.head
+		left_leg = home.left_leg; right_leg = home.right_leg
+		arms[-1] = home.left_arm; arms[1] = home.right_arm
+		origin = home.origin; lie_scale = home.lie_scale; tilt = 0.0
+		barbell = home.barbell
+		bottle = home.bottle
+		bar_scale_home = float(home.get("bar_scale", 1.0))
+	# Holding a prisoner down: kneeling over them, both hands pressing at their back and wrists.
+	if action == "pin":
+		var press: float = sin(phase * TAU * 3.0) * 0.8
+		hip = _joint(0, 1.5, HIP_HEIGHT - 13.0)
+		chest = _joint(0, 9.0, CHEST_HEIGHT - 18.0)
+		head = _joint(0, 12.5, HEAD_HEIGHT - 19.0)
+		left_leg = PackedVector2Array([hip + _joint(-5.3, 0, 0), _joint(-5.6, 10.0, 6.0), _joint(-5.0, 9.0, 1.0)])   # left foot planted
+		right_leg = PackedVector2Array([hip + _joint(5.3, 0, 0), _joint(5.4, 3.0, 2.0), _joint(5.3, -9.0, 2.0)])     # right knee on the ground
+		for side in [-1, 1]:
+			var shoulder: Vector2 = chest + _joint(side * 9.0, 0, 0)
+			var hand: Vector2 = _joint(side * 3.0, 17.0 + press, 4.5)
+			arms[side] = PackedVector2Array([shoulder, shoulder.lerp(hand, 0.5) + _joint(side * 2.5, 0, 2.0), hand])
+	# Hauling a prisoner up: legs braced, leaning back, hands gripping their arm and pulling.
+	if action == "lift":
+		var heave_up: float = smoothstep(0.0, 0.85, phase)
+		var lean: float = -4.0 * heave_up + 6.0 * (1.0 - heave_up)
+		chest += _joint(0, lean, -6.0 * (1.0 - heave_up))
+		head += _joint(0, lean * 1.2, -7.0 * (1.0 - heave_up))
+		for side in [-1, 1]:
+			var shoulder: Vector2 = chest + _joint(side * 9.0, 0, 0)
+			var grip: Vector2 = _joint(side * 2.5, 13.0, lerpf(9.0, 30.0, heave_up))
+			arms[side] = PackedVector2Array([shoulder, shoulder.lerp(grip, 0.5) + _joint(side * 3.0, -1.0, -2.0), grip])
 	for dead_side in pose.get("dead_arms", []):
 		var limp_arm: PackedVector2Array = arms[int(dead_side)]
 		var dangling_elbow: Vector2 = limp_arm[0] + _joint(float(dead_side) * 2.6, 0.5, -8.5)
@@ -675,8 +749,163 @@ func _build_frame() -> Dictionary:
 		"rest_lying": lying if action == "rest" else 0.0,
 		"pack_center": pack_center, "pack_move": pack_move, "pack_open": pack_open, "backpack": _wears_pack(),
 		"treat_center": treat_center, "treat_hand": treat_hand, "treat_reach": treat_reach,
+		"barbell": barbell, "bottle": bottle, "bar_scale": bar_scale_home,
 		"armed": armed, "impact": impact, "show_cargo": show_cargo and not armed, "build_raise": build.raise, "build_carry": build.carry, "build_check": build.check, "pump": pump, "slung": (bool(pose.get("slung", false)) or bool(pose.get("gun_equipped", false))) and not armed,
 	}
+
+## A body from a few numbers: hips, knees and chest heights and how far they sit forward or back,
+## feet planted; the head follows the chest. Facing out (south) unless the caller faces it away.
+func _body(hip_h: float, hip_r: float, knee_h: float, knee_r: float, knee_w: float, chest_dh: float, chest_r: float, lift: float = 0.0) -> Dictionary:
+	var hip := _joint(0, hip_r, hip_h + lift)
+	var chest := hip + _joint(0, chest_r, chest_dh)
+	var head := chest + _joint(0, chest_r * 0.3, HEAD_HEIGHT - CHEST_HEIGHT)
+	var legs := {}
+	for side in [-1, 1]:
+		var foot_h: float = 1.5 + lift
+		legs[side] = PackedVector2Array([hip + _joint(side * 5.3, 0, 0), _joint(side * knee_w, knee_r, knee_h + lift), _joint(side * 6.2, 0.0 if lift <= 0.0 else -1.5, foot_h)])
+	return {"hip": hip, "chest": chest, "head": head, "left_leg": legs[-1], "right_leg": legs[1]}
+
+## Both arms from the shoulders to the two hands (elbows bent out by `flare`).
+func _arms_to(chest: Vector2, hands: Dictionary, flare: float, elbow_drop: float = 3.0) -> Dictionary:
+	var out := {}
+	for side in [-1, 1]:
+		var shoulder: Vector2 = chest + _joint(side * 9.4, 0, 0)
+		var hand: Vector2 = hands[side]
+		out[side] = PackedVector2Array([shoulder, shoulder.lerp(hand, 0.5) + _joint(side * flare, 0, -elbow_drop), hand])
+	return out
+
+## Squat, bench press, deadlift, pull-ups and the fridge, stage by stage. Every stage is continuous
+## with the next (set_pose also blends across a change of stage), hands travel between their holds
+## instead of jumping, and the bar sits exactly where the rack, bench or platform holds it (their art
+## in home_art.gd is lined up with these numbers), so lifting it off and setting it back is seamless.
+func _home_pose(action: String, stage: String, p: float, bar_held: bool) -> Dictionary:
+	var down: float = smoothstep(0.0, 0.5, p) if p < 0.5 else 1.0 - smoothstep(0.5, 1.0, p)   # a rep: down and back up
+	var origin := Vector2.ZERO
+	var lie_scale := 1.0
+	var barbell: Array = []
+	var bar_scale := 1.0
+	var bottle := Vector2.INF
+	var b: Dictionary
+	var hands := {}
+	var elbows := {}
+	var flare := 4.0
+	match action:
+		"squat":
+			# Under the rack (a little north of where you stand) until you walk it out, and back in to rack it.
+			var under: float = {"setup": smoothstep(0.0, 0.6, p), "unrack": 1.0, "walkout": 1.0 - smoothstep(0.0, 1.0, p), "rep": 0.0, "walkin": smoothstep(0.0, 1.0, p), "rerack": 1.0, "exit": 1.0 - smoothstep(0.3, 1.0, p)}.get(stage, 0.0)
+			origin = Vector2(0, -12.0 * under)
+			# Depth: hips back and down to parallel, knees forward and out, chest leaning over the knees.
+			var d: float = {"setup": 0.16 * smoothstep(0.5, 1.0, p), "unrack": 0.2 * (1.0 - smoothstep(0.0, 0.7, p)), "rep": down, "rerack": 0.25 * sin(p * PI)}.get(stage, 0.0)
+			b = _body(HIP_HEIGHT - 17.0 * d, -7.0 * d, 15.0 - 1.0 * d, 11.0 * d, 5.5 + 5.0 * d, CHEST_HEIGHT - HIP_HEIGHT - 3.0 * d, 9.0 * d)
+			b.head = b.chest + _joint(0, 3.0 * d, HEAD_HEIGHT - CHEST_HEIGHT - 1.0 * d)
+			# Hands: up to the bar as you step under, on it throughout, down again as you step away.
+			var grip: float = {"setup": smoothstep(0.25, 0.85, p), "exit": 1.0 - smoothstep(0.0, 0.55, p)}.get(stage, 1.0)
+			var centre: Vector2 = b.chest + _joint(0, -2.0, 4.0)
+			for side in [-1, 1]:
+				var at_side: Vector2 = b.hip + _joint(side * 12.5, 0.6, 1.0)
+				var on_bar: Vector2 = centre + _joint(side * 15.0, 1.0, 0)
+				hands[side] = at_side.lerp(on_bar, grip)
+				elbows[side] = (b.chest + _joint(side * 9.4, 0, 0)).lerp(hands[side], 0.5) + _joint(side * lerpf(3.0, 9.0, grip), lerpf(0.0, -3.0, grip), lerpf(-3.0, -6.0, grip))
+			if bar_held: barbell = [centre + _joint(-BAR_HALF, 0, 0), centre + _joint(BAR_HALF, 0, 0)]
+		"deadlift":
+			# Hinge: hips back, back flat and tipped forward, head following; the bar runs up the legs.
+			var bend: float = {"setup": 0.0, "hinge": smoothstep(0.0, 1.0, p), "release": 1.0 - smoothstep(0.35, 1.0, p)}.get(stage, 0.0)
+			if stage == "rep": bend = 1.0 - (smoothstep(0.0, 0.5, p) if p < 0.5 else 1.0 - smoothstep(0.5, 1.0, p))
+			b = _body(HIP_HEIGHT - 9.0 * bend, -8.0 * bend, 15.0 - 3.0 * bend, 6.0 * bend, 6.0, CHEST_HEIGHT - HIP_HEIGHT - 12.0 * bend, 17.0 * bend)
+			b.head = b.chest + _joint(0, 6.0 * bend, HEAD_HEIGHT - CHEST_HEIGHT - 6.0 * bend)
+			for side in [-1, 1]:
+				var shoulder: Vector2 = b.chest + _joint(side * 9.4, 0, 0)
+				hands[side] = shoulder + _joint(side * 5.0, 3.0 * bend, -18.0)
+			flare = 1.0
+			var centre_d: Vector2 = (hands[-1] + hands[1]) * 0.5
+			if bar_held: barbell = [centre_d + _joint(-BAR_HALF, 0, 0), centre_d + _joint(BAR_HALF, 0, 0)]
+		"bench":
+			# Sit on the bench, lie back along it (seen from above, head to the uprights), reach up and
+			# grip the bar, lift it off, then each rep: elbows flare wide as the bar comes down to the
+			# chest, tuck as the arms press it up over the shoulders (where it's nearer you: drawn a touch
+			# larger); rack it, sit up and stand.
+			var lie: float = {"sit": 0.0, "lie": smoothstep(0.0, 1.0, p), "grip": 1.0, "unrack": 1.0, "rep": 1.0, "rerack": 1.0, "situp": 1.0 - smoothstep(0.0, 1.0, p), "stand": 0.0}.get(stage, 0.0)
+			var sit: float = {"sit": smoothstep(0.0, 1.0, p), "stand": 1.0 - smoothstep(0.0, 1.0, p)}.get(stage, 1.0)
+			lie_scale = lerpf(1.0, 0.85, lie)
+			origin = Vector2(19.0 * sit, 0)
+			var seat: float = lerpf(HIP_HEIGHT, 13.0, sit * (1.0 - lie))
+			b = _body(seat, -1.0 * sit * (1.0 - lie), lerpf(15.0, 13.0, sit), 8.0 * sit * (1.0 - lie), 5.5, CHEST_HEIGHT - HIP_HEIGHT, 1.0 * sit * (1.0 - lie))
+			if lie > 0.01:
+				# Lying: knees up, feet planted on the floor either side of the bench.
+				for side in [-1, 1]:
+					var key: String = "left_leg" if side < 0 else "right_leg"
+					var standing_leg: PackedVector2Array = b[key]
+					var lying_leg := PackedVector2Array([b.hip + _joint(side * 5.3, 0, 0), _joint(side * 15.0, 6.0, 15.0), _joint(side * 18.0, 3.0, 2.0)])   # knees out over the floor
+					b[key] = PackedVector2Array([standing_leg[0].lerp(lying_leg[0], lie), standing_leg[1].lerp(lying_leg[1], lie), standing_leg[2].lerp(lying_leg[2], lie)])
+			var rack: Vector2 = b.head + _joint(0, 4.0, 6.0)        # the bar on the uprights, over the face
+			var chest_bar: Vector2 = b.chest + _joint(0, 1.0, -9.0) # the bar touching the chest
+			var locked: Vector2 = b.chest + _joint(0, 1.0, 3.0)     # arms straight up: the bar over the shoulders
+			var bar_at := Vector2.INF
+			var press: float = 0.0
+			match stage:
+				"grip": bar_at = rack
+				"unrack": bar_at = rack.lerp(locked, smoothstep(0.45, 1.0, p))
+				"rep":
+					press = 1.0 - down
+					bar_at = chest_bar.lerp(locked, press)
+				"rerack": bar_at = locked.lerp(rack, smoothstep(0.0, 0.55, p))
+			if bar_at != Vector2.INF:
+				var reach_in: float = smoothstep(0.0, 0.7, p) if stage == "grip" else 1.0
+				for side in [-1, 1]:
+					var shoulder: Vector2 = b.chest + _joint(side * 9.4, 0, 0)
+					var rest_hand: Vector2 = b.hip + _joint(side * 9.0, 2.0, 4.0)
+					hands[side] = rest_hand.lerp(bar_at + _joint(side * 15.0, 0, 0), reach_in)
+					var wide: float = 1.0 - press if stage == "rep" else (0.3 if stage in ["unrack", "rerack"] else 0.5)
+					elbows[side] = shoulder.lerp(hands[side], 0.5) + _joint(side * lerpf(3.0, 12.0, wide), 0, lerpf(0.0, -5.0, wide))
+				if bar_held:
+					bar_scale = lerpf(1.0, 1.12, press if stage == "rep" else 0.7)
+					barbell = [bar_at + _joint(-BAR_HALF, 0, 0), bar_at + _joint(BAR_HALF, 0, 0)]
+			else:
+				for side in [-1, 1]: hands[side] = b.hip + _joint(side * 9.0, 6.0 * sit, 3.0)
+		"pullup":
+			# Reach up and jump to the bar, settle into a hang, pull the chin over it, lower; drop down.
+			var hang: float = {"jump": smoothstep(0.2, 1.0, p), "hang": 1.0, "rep": 1.0, "drop": 1.0 - smoothstep(0.0, 0.8, p)}.get(stage, 0.0)
+			var reach_up: float = {"jump": smoothstep(0.0, 0.5, p), "drop": 1.0 - smoothstep(0.5, 1.0, p)}.get(stage, 1.0)
+			var pull: float = down if stage == "rep" else 0.0
+			var crouch: float = 4.0 * sin(clampf(p * 2.0, 0.0, 1.0) * PI) if stage in ["jump", "drop"] else 0.0   # a little dip to jump, and to land
+			var lift: float = 3.0 * hang + 9.0 * pull
+			origin = Vector2(12.0, -40.0 * hang)   # between the posts, hands closing on the bar
+			b = _body(HIP_HEIGHT - crouch, 0.0, 15.0 - crouch * 0.5, 2.0 * crouch - 2.0 * hang, 5.0, CHEST_HEIGHT - HIP_HEIGHT, 0.0, lift)
+			for side in [-1, 1]:
+				var low: Vector2 = b.hip + _joint(side * 12.0, 0.6, 1.0)
+				hands[side] = low.lerp(_joint(side * 10.0, 0, 70.0), reach_up)
+			flare = 3.0 + 9.0 * pull
+		"fridge":
+			b = _body(HIP_HEIGHT, 0.0, 15.0, 0.0, 5.5, CHEST_HEIGHT - HIP_HEIGHT, 0.0)
+			var side_r: Vector2 = b.hip + _joint(10.0, 1.0, 1.0)
+			var side_l: Vector2 = b.hip + _joint(-10.0, 1.0, 1.0)
+			var handle: Vector2 = b.chest + _joint(-7.0, 14.0, -4.0)
+			var shelf: Vector2 = b.chest + _joint(4.0, 17.0, -7.0)
+			var mouth: Vector2 = b.head + _joint(3.0, 4.0, -3.0)
+			var left: Vector2 = side_l
+			var right: Vector2 = side_r
+			match stage:
+				"open":   # left hand to the handle and pulling the door
+					left = side_l.lerp(handle, smoothstep(0.0, 0.5, p)) + _joint(-6.0 * smoothstep(0.5, 1.0, p), -3.0 * smoothstep(0.5, 1.0, p), 0)
+				"reach":  # holding the door, the right hand reaches in for a bottle and draws it out
+					left = handle + _joint(-6.0, -3.0, 0)
+					right = side_r.lerp(shelf, smoothstep(0.0, 0.5, p)).lerp(b.chest + _joint(6.0, 6.0, -8.0), smoothstep(0.6, 1.0, p))
+				"close":  # pushing the door shut, bottle in the other hand
+					left = (handle + _joint(-6.0, -3.0, 0)).lerp(handle, smoothstep(0.0, 0.6, p)).lerp(side_l, smoothstep(0.6, 1.0, p))
+					right = b.chest + _joint(6.0, 6.0, -8.0)
+				"drink":  # bottle up to the mouth, head back
+					right = (b.chest + _joint(6.0, 6.0, -8.0)).lerp(mouth, smoothstep(0.0, 0.3, p))
+					b.head += _joint(0, -1.0, 1.0) * smoothstep(0.2, 0.4, p) * (1.0 - smoothstep(0.85, 1.0, p))
+				"lower":
+					right = mouth.lerp(side_r, smoothstep(0.0, 1.0, p))
+			hands[-1] = left
+			hands[1] = right
+			if (stage == "reach" and p > 0.45) or stage in ["close", "drink"] or (stage == "lower" and p < 0.85): bottle = right
+	var arms_out := _arms_to(b.chest, hands, flare)
+	for side in elbows:
+		arms_out[side] = PackedVector2Array([arms_out[side][0], elbows[side], arms_out[side][2]])
+	return {"hip": b.hip, "chest": b.chest, "head": b.head, "left_leg": b.left_leg, "right_leg": b.right_leg,
+		"left_arm": arms_out[-1], "right_arm": arms_out[1], "origin": origin, "lie_scale": lie_scale, "barbell": barbell, "bar_scale": bar_scale, "bottle": bottle}
 
 ## The keyframed pose at `phase` of a key list: centripetal-free Catmull-Rom in time, so the body
 ## moves through every key without stopping at it.
@@ -865,6 +1094,8 @@ func _paint() -> void:
 		boot_color = Outfits.color(str(outfit.get("boots", "")), skin.darkened(0.08))
 		hat_item = str(outfit.get("hat", ""))
 	wears_badge = str(outfit.get("vest", "")) == "vest:4"
+	long_coat = str(outfit.get("vest", "")) in Outfits.LONG_COATS
+	mask_item = str(outfit.get("mask", ""))
 	var near_side := -1 if across.y < 0 else 1
 	var arms: Dictionary = {-1: frame.left_arm, 1: frame.right_arm}
 	var legs: Dictionary = {-1: frame.left_leg, 1: frame.right_leg}
@@ -898,6 +1129,9 @@ func _paint() -> void:
 		if frame.armed: _draw_rifle(frame.stock, frame.muzzle, frame.pump)
 	var slung_on_top: bool = front < -0.08 or bool(frame.get("pack_front", false))
 	if frame.slung and not slung_on_top: _draw_slung(frame.chest, frame.hip, front)
+	var bar_now: Array = frame.get("barbell", [])
+	if bar_now.size() == 2 and str(pose.get("action", "")) == "squat" and forward.y > -0.3:
+		HomeArt.barbell(self, bar_now[0], bar_now[1], 2, BAR_SIZE)   # across the back of the shoulders: behind the head
 	_draw_coat(frame.chest, frame.hip, width, vest, shirt)
 	if frame.slung and slung_on_top: _draw_slung(frame.chest, frame.hip, front)
 	if frame.get("backpack", false) and float(frame.pack_move) < 0.5 and front > -0.08:
@@ -928,6 +1162,12 @@ func _paint() -> void:
 		_draw_arm(arms[-near_side], shirt, skin)
 	if not both_arms_behind:
 		_draw_arm(arms[near_side], shirt, skin)
+	var bar_points: Array = frame.get("barbell", [])
+	if bar_points.size() == 2 and not (str(pose.get("action", "")) == "squat" and forward.y > -0.3): HomeArt.barbell(self, bar_points[0], bar_points[1], 2, BAR_SIZE * float(frame.get("bar_scale", 1.0)))
+	var held_bottle: Vector2 = frame.get("bottle", Vector2.INF)
+	if held_bottle != Vector2.INF:
+		draw_rect(Rect2(held_bottle + Vector2(-1.6, -6.0), Vector2(3.2, 7.0)), Color("6b3a22"))
+		draw_rect(Rect2(held_bottle + Vector2(-0.8, -8.0), Vector2(1.6, 2.5)), Color("3e2416"))
 	if frame.get("backpack", false) and not pack_drawn:
 		_draw_pack(frame.pack_center, float(frame.pack_open), float(frame.pack_move))
 	if action == "cuffed":
@@ -937,6 +1177,23 @@ func _paint() -> void:
 		draw_line(left_hand, right_hand, Color("3a3b3e"), 1.4, true)
 		for wrist in [left_hand, right_hand]:
 			draw_arc(wrist, 2.2, 0.0, TAU, 12, Color("9a9ca0"), 1.2, true)
+	if action == "tied":
+		# Rope: turns round the chest and arms, a knot, and the wrists lashed behind the back.
+		var rope := Color("b89a62")
+		var rope_dark := Color("7d6440")
+		var chest_at: Vector2 = frame.chest
+		for turn in range(3):
+			var y: float = 3.0 + float(turn) * 4.0
+			var a: Vector2 = chest_at + _joint(-11.0, 0, -y)
+			var b: Vector2 = chest_at + _joint(11.0, 0, -y)
+			draw_line(a, b, rope_dark, 2.6, true)
+			draw_line(a, b, rope, 1.6, true)
+		draw_circle(chest_at + _joint(2.0, 1.5, -7.0), 2.0, rope)
+		var left_wrist: Vector2 = arms[-1][2]
+		var right_wrist: Vector2 = arms[1][2]
+		draw_line(left_wrist, right_wrist, rope, 1.8, true)
+		for wrist in [left_wrist, right_wrist]:
+			draw_arc(wrist, 2.4, 0.0, TAU, 10, rope_dark, 1.4, true)
 	if action == "treat" and float(frame.get("treat_reach", 0.0)) > 0.3:
 		var roll: Vector2 = frame.treat_hand
 		var wound: Vector2 = frame.treat_center
@@ -987,10 +1244,17 @@ func _walk_leg(side: int, hip: Vector2, gait: float, moving: bool) -> PackedVect
 	var foot := _joint(side * 5.3, 0, 3.0)
 	var direction: Vector2 = pose.get("move_direction", forward) if moving else forward
 	var travel := Vector2(direction.x, direction.y * 0.48)
+	# Stepping against the way the body faces (backing off while aiming) or sideways (strafing):
+	# the feet still go the way of travel, but knees only bend the way the body faces, the steps
+	# are shorter, and a backward step lands toe first.
+	var along: float = direction.normalized().dot(forward.normalized()) if moving and direction.length() > 0.01 else 1.0
+	var backing: float = clampf(-along * 1.6, 0.0, 1.0)                  # 0 forwards .. 1 straight back
+	var sideways: float = clampf(1.0 - absf(along) * 1.6, 0.0, 1.0)      # 0 along the facing .. 1 straight across
+	var knee_way := Vector2(forward.x, forward.y * 0.48) if backing > 0.0 or sideways > 0.0 else travel
 	# Keep the standing leg vertical. Only a lowered hip needs knee bend.
 	var flex := maxf(0.0, HIP_HEIGHT + hip.y) * 0.5
 	if moving:
-		var cycle_distance := Director.CELL * Director.WALK_CYCLE_METERS * (1.0 - 0.35 * clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0))
+		var cycle_distance := Director.CELL * Director.WALK_CYCLE_METERS * (1.0 - 0.35 * clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0)) * (1.0 - 0.3 * backing - 0.2 * sideways)
 		# Land just ahead of the hips. The body travels farther past the planted
 		# foot before push-off than it travels to meet it after contact.
 		var front := cycle_distance * WALK_STANCE * 0.375
@@ -1011,19 +1275,20 @@ func _walk_leg(side: int, hip: Vector2, gait: float, moving: bool) -> PackedVect
 			lift = 5.0 * recovery * (1.0 - 0.4 * clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0))
 			flex = 1.0 + 5.0 * recovery
 		foot = _joint(side * 5.4, 0, 3.0 + lift) + travel * stride
-		var pitch := walking_foot_pitch(side, gait)
+		var pitch := walking_foot_pitch(side, gait) * (1.0 - 1.7 * backing)   # backing off: toe first, heel down
+		if sideways > 0.0: foot += _joint(side * 1.2 * sideways * sin(PI * clampf(cycle, 0.0, 1.0)), 0, 0)   # a side-step opens the feet
 		var contact := boot_contact(pitch)
 		foot += contact - boot_roll(pitch) * contact
 	var sneak: float = clampf(float(pose.get("sneak", 0.0)), 0.0, 1.0)
 	if sneak > 0.001 and not moving:
 		# A crouched stance: one foot a little ahead of the other.
 		foot += _joint(side * 0.8 * sneak, side * 2.5 * sneak, 0.0)
-	var knee := top.lerp(foot, 0.52) + travel * flex
+	var knee := top.lerp(foot, 0.52) + knee_way * flex
 	if sneak > 0.001:
 		# Two-bone knee: the closer the hip comes to the foot, the further the knee folds forward.
 		var reach_now := top.distance_to(foot)
 		var bend := sqrt(maxf(0.0, 13.4 * 13.4 - reach_now * reach_now * 0.25))
-		knee = top.lerp(foot, 0.5) + travel * maxf(flex, bend)
+		knee = top.lerp(foot, 0.5) + knee_way * maxf(flex, bend)
 	return PackedVector2Array([top, knee, foot])
 
 ## Running cycle, solved as a two-bone leg so the knee always bends forwards: a short stance
@@ -1156,11 +1421,19 @@ func _draw_coat(chest: Vector2, hip: Vector2, width: float, vest: Color, shirt: 
 		hip + Vector2(-width * 0.38, 2.1), hip + Vector2(-width * 0.74, -0.4),
 		center + Vector2(-width * 0.71, 1), chest + Vector2(-width * 0.89, 5),
 		chest + Vector2(-width * 0.91, 0.1)])
+	if long_coat and has_vest:
+		# Duster tails: open at the front, hanging from the waist to the knees, split up the back.
+		var hem: float = 6.0 if str(pose.get("action", "")) in ["sit", "cook", "tied"] else 13.0
+		for tail_side in [-1.0, 1.0]:
+			_shape(PackedVector2Array([hip + Vector2(tail_side * width * 0.78, -1.0), hip + Vector2(tail_side * 1.2, 0.5),
+				hip + Vector2(tail_side * 1.6, hem), hip + Vector2(tail_side * width * 0.98, hem - 1.0)]), vest.darkened(0.08), 1.2)
+			draw_line(hip + Vector2(tail_side * width * 0.5, 1.0), hip + Vector2(tail_side * width * 0.62, hem - 1.5), vest.darkened(0.3), 0.6, true)
 	_shape(_rounded(body, 0.18), vest, 1.6)
 	# A single side shadow follows the tailored waist. No inset plastic panel.
-	draw_colored_polygon(PackedVector2Array([chest + Vector2(width * 0.57, -0.5), chest + Vector2(width * 0.88, 0.2),
+	var side_shade := PackedVector2Array([chest + Vector2(width * 0.57, -0.5), chest + Vector2(width * 0.88, 0.2),
 		center + Vector2(width * 0.70, 1), hip + Vector2(width * 0.72, -0.5),
-		hip + Vector2(width * 0.40, 1.1), center + Vector2(width * 0.45, 0)]), vest.darkened(0.18))
+		hip + Vector2(width * 0.40, 1.1), center + Vector2(width * 0.45, 0)])
+	if Props.fillable(side_shade): draw_colored_polygon(side_shade, vest.darkened(0.18))   # (folded flat when bent double: skipped)
 	draw_line(chest + Vector2(-width * 0.65, 1), center + Vector2(-width * 0.55, -1), vest.lightened(0.18), 0.75, true)
 	if wears_badge and forward.y > -0.3:
 		# The sheriff's star, pinned on the left breast.
@@ -1320,6 +1593,20 @@ func _draw_head(head: Vector2, skin: Color) -> void:
 			for dot in range(9):
 				var along: float = float(dot) / 8.0
 				draw_circle(face + Vector2(lerpf(-4.8, 4.8, along), 5.2 + sin(along * PI) * 2.6), 0.42, Color(hair, 0.55), true, -1, true)
+		if not mask_item.is_empty():
+			# A bandana pulled up over the nose and mouth, tied behind the head.
+			var cloth: Color = Outfits.BANDANAS[int(mask_item.get_slice(":", 1)) % Outfits.BANDANAS.size()]
+			var low: PackedVector2Array
+			if profile:
+				low = PackedVector2Array([face + Vector2(-side * 5.4, 0.6), face + Vector2(side * 6.8, 0.4), face + Vector2(side * 5.6, 4.6),
+					face + Vector2(side * 2.0, 9.6), face + Vector2(-side * 2.4, 7.4), face + Vector2(-side * 5.6, 2.6)])
+			else:
+				low = PackedVector2Array([face + Vector2(-6.7, 0.6), face + Vector2(6.7, 0.6), face + Vector2(5.4, 4.8),
+					face + Vector2(forward.x * 2.0, 10.6), face + Vector2(-5.4, 4.8)])
+			_shape(low, cloth, 0.9)
+			draw_line(face + Vector2(-4.5, 3.0), face + Vector2(4.5, 3.0), cloth.darkened(0.25), 0.6, true)
+			for dot in range(3):
+				draw_circle(face + Vector2(-3.0 + dot * 3.0 + forward.x * 1.5, 5.6), 0.5, cloth.lightened(0.35), true, -1, true)
 		# One visible ear and a shaped sideburn, away from the eyes.
 		var ear_side := -side if side != 0 else -1.0
 		var ear := face + Vector2(ear_side * 6.4, 1.6)

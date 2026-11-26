@@ -11,8 +11,13 @@ const PELLET_HEALTH := 9
 const TORSO_WOUND := 12
 const HEAD_WOUND := 22
 
-## {"area": "leg"|"arm"|"torso"|"head", "limb": "left_leg" ...} for a seeded roll.
-static func pick(sim: RefCounted) -> Dictionary:
+## {"area": "leg"|"arm"|"torso"|"head", "limb": "left_leg" ...} for a seeded roll. `aim` is where a
+## careful shooter tries to hit: "legs" (to bring someone down without killing them) or "gun_arm"
+## (the right arm, to make them drop the gun). An aimed shot lands there three times in four.
+static func pick(sim: RefCounted, aim: String = "") -> Dictionary:
+	if aim != "" and sim.random_int("wounds", 0, 99) < 75:
+		if aim == "legs": return {"area": "leg", "limb": ("left" if sim.random_int("wounds", 0, 1) == 0 else "right") + "_leg"}
+		if aim == "gun_arm": return {"area": "arm", "limb": "right_arm"}
 	var roll: int = sim.random_int("wounds", 0, 99)
 	var side: String = "left" if sim.random_int("wounds", 0, 1) == 0 else "right"
 	if roll < 30: return {"area": "leg", "limb": side + "_leg"}
@@ -22,9 +27,9 @@ static func pick(sim: RefCounted) -> Dictionary:
 
 ## A bullet or pellet hits `target` (a resident id or the player) standing at `cell`.
 ## `strength` scales the damage (1.0 for a pellet). `direction` is the way it was travelling.
-static func shoot(sim: RefCounted, target: int, cell: Array, direction: Array, strength: float = 1.0, lethal: bool = false) -> Dictionary:
+static func shoot(sim: RefCounted, target: int, cell: Array, direction: Array, strength: float = 1.0, lethal: bool = false, aim: String = "") -> Dictionary:
 	var s: Dictionary = sim.state
-	var hit := pick(sim)
+	var hit := pick(sim, "" if lethal else aim)
 	if lethal and hit.area in ["arm", "leg"]:
 		hit = {"area": "torso", "limb": ""} if sim.random_int("wounds", 0, 99) < 75 else {"area": "head", "limb": ""}
 	var limb_amount: int = roundi(LIMB_WOUND * strength)

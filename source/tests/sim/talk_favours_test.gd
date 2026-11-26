@@ -54,7 +54,11 @@ func _initialize() -> void:
 	check(cowed, "Threatening a nervous person can cow them into a discount")
 	check(Society.opinion(s, int(nervous.id), int(s.player)) < before, "...but they think less of you")
 	# The Talk tab lists favours, questions and the three tones.
-	var ids: Array = Dialogue.options(s, int(warm.id)).map(func(o): return o.id)
+	var ids: Array = []
+	for page in range(3):   # long lists go over pages ("More…")
+		s.player_control.talk_page = page
+		ids += Dialogue.options(s, int(warm.id)).map(func(o): return o.id)
+	s.player_control.talk_page = 0
 	check("ask_help" in ids and "ask_news" in ids and "say_threaten" in ids, "Talk offers help, questions and tones (%s)" % str(ids))
 	# Held at gunpoint for a theft: bribe options, and they work on a friendly sheriff.
 	var sheriff: Dictionary = _held(sim, s, "theft")

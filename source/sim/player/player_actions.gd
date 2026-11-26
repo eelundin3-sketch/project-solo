@@ -36,7 +36,7 @@ static func target(s: Dictionary, preferred: int = 0) -> int:
 		var e: Dictionary=s.entities.get(str(id),{})
 		if e.is_empty() or not e.has("cell"): continue
 		if e.get("kind","")=="stash" and Inventory.used(s.inventories.get(str(e.id),{"items":{},"capacity":1,"reserved":{}}))==0: continue
-		if e.id==s.player or e.get("kind","") not in ["sawmill","bakery","forge","office","warehouse","market","market_stall","construction","stash","resident","tree","farm","ore","chest"] or not near(s,e): continue
+		if e.id==s.player or e.get("kind","") not in ["sawmill","bakery","forge","office","warehouse","market","saloon","town_hall","market_stall","construction","stash","resident","tree","farm","ore","chest"] or not near(s,e): continue
 		var candidate: int=distance(s.entities[str(s.player)].cell,World.Fixtures.interaction_cell(s,e.id))*10
 		candidate+=0 if e.kind in ["sawmill","warehouse","market","market_stall","stash"] else (3 if e.kind=="resident" else 5)
 		if candidate<score: score=candidate; found=e.id
@@ -264,6 +264,15 @@ static func prompt(s: Dictionary,preferred: int = 0) -> String:
 	for part in s.player_health.parts.values():
 		if part.bleeding: warning="BLEEDING · Press H.  "; break
 	if not pc.work.is_empty(): return warning+"F: stop %s · %d/%d" % [pc.work.kind,pc.work.progress,pc.work.ticks]
+	var Activities = load("res://sim/player/activities.gd")
+	if Activities.active(s):
+		var act: Dictionary = Activities.stage_of(s)
+		if act.kind in Activities.WORKOUTS: return warning+"%s · rep %d of %d · F: stop" % [Activities.LABELS[act.kind].split(" (")[0], mini(Activities.REPS, int(act.rep) + (1 if act.stage == "rep" else 0)), Activities.REPS]
+		return warning+"F: get up"
+	var piece: Dictionary = Activities.nearby(s)
+	if not piece.is_empty():
+		var why: String = Activities.problem(s, str(piece.kind))
+		return warning+("F: %s" % Activities.LABELS[piece.kind] if why.is_empty() else why)
 	if pc.held_quantity>0: return warning+"F: put down %d %s · I: stow" % [pc.held_quantity,pc.held_item]
 	var id: int=target(s,preferred)
 	return warning+("F: interact with "+s.entities[str(id)].name if id!=0 else pc.notice)

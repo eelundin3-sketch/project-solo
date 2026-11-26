@@ -23,19 +23,20 @@ static func building_at(s: Dictionary, cell: Array) -> Dictionary:
 		if cell[0] >= f[0] and cell[1] >= f[1] and cell[0] < f[0] + f[2] and cell[1] < f[1] + f[3]: return entity
 	return {}
 
+## Shops are open 07:00-21:00, from when people are up until they go to bed.
 static func _open_hours(s: Dictionary) -> bool:
 	var minute: int = (int(s.tick) / 10) % 1440
-	return minute >= 360 and minute < 1260
+	return minute >= 420 and minute < 1260
 
 static func _night(s: Dictionary) -> bool:
-	var minute: int = (int(s.tick) / 10) % 1440
-	return minute < 330 or minute >= 1320
+	return load("res://sim/world/day_clock.gd").is_night(s)
 
 ## "private" (someone's home), "closed" (a shop out of hours) or "" (you may be here).
 static func kind_of_place(s: Dictionary, building: Dictionary) -> String:
 	if building.is_empty(): return ""
 	if building.kind in SHOP_KINDS: return "" if _open_hours(s) else "closed"
 	if building.kind != "home": return ""
+	if bool(building.get("player_house", false)): return ""   # your own house
 	for town in s.get("settlements", {}).values():
 		if int(town.get("home", 0)) == int(building.id): return ""   # the common lodge
 	for household in s.get("households", {}).values():

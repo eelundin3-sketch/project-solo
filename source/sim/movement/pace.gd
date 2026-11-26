@@ -4,7 +4,9 @@ extends RefCounted
 ## fraction (hundredths of a tick) and the average pace comes out exact; integer maths only, so the
 ## simulation stays deterministic.
 const TownLayout = preload("res://sim/world/town_layout.gd")
-const BONUS := [0, 15, 30]   # percent faster: off the roads, a town street, a road between towns
+const BONUS := [0, 15, 30]
+const MUDDY := 50          # road mud above this slows walkers...
+const MUD_SLOWER := 15     # ...by this many percent   # percent faster: off the roads, a town street, a road between towns
 
 static func bonus(s: Dictionary, cell: Array) -> int:
 	return BONUS[TownLayout.road_kind(s, cell)]
@@ -14,6 +16,7 @@ static func bonus(s: Dictionary, cell: Array) -> int:
 ## `slower` (percent) lengthens each step, for a heavy load (encumbrance.gd).
 static func delay(s: Dictionary, cell: Array, base: int, record: Dictionary, key: String = "stride_carry", slower: int = 0) -> int:
 	var extra: int = bonus(s, cell)
+	if extra > 0 and load("res://sim/world/weather.gd").mud_at(s, cell) > MUDDY: slower += MUD_SLOWER   # a muddy road
 	if extra == 0 and slower == 0:
 		record[key] = 0
 		return base

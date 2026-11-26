@@ -14,6 +14,10 @@ const DrawnCharacter = preload("res://view/actors/drawn_character.gd")
 const RoadSurface = preload("res://view/world/road_surface.gd")
 const LANDSCAPE = preload("res://view/world/landscape.gdshader")
 const Probe = preload("res://sim/diagnostics/perf_probe.gd")
+const NightLayer = preload("res://view/world/night_layer.gd")
+const DayClock = preload("res://sim/world/day_clock.gd")
+const WeatherLayer = preload("res://view/world/weather_layer.gd")
+const Roofs = preload("res://view/world/roofs.gd")
 const CELL: float = 24.0
 ## Characters are drawn at half size so they are in proportion to doors, furniture and trees.
 const CHAR_SCALE: float = 0.625
@@ -54,6 +58,10 @@ var refresh_age: float = 0.0
 var last_camera: Vector2 = Vector2.INF
 var last_zoom: Vector2 = Vector2.ZERO
 var daylight: CanvasModulate
+var night: Node2D            # darkness with lamp, window and lantern pools (night_layer.gd)
+var weather_layer: Node2D    # rain, snow and fog over the people (weather_layer.gd)
+var roofs_layer := Roofs.new()  # a roof on every building but the one you're in (roofs.gd)
+var label_layer: Node2D        # town names, above the roofs
 var building_rects: Array[Rect2i] = []
 var building_rects_signature: Array = []
 var atmosphere_time: float = 0.0
@@ -174,7 +182,9 @@ class DepthObject extends Node2D:
 				draw_set_transform(Vector2.ZERO)
 		elif object_kind == "furniture":
 			draw_set_transform(-position)
-			MapArt.draw_furnishing(self, furniture_data, -position)
+			var data: Dictionary = furniture_data
+			if str(data.get("kind", "")) in LIVE_FURNITURE: data = projector.live_furniture(data, entity_id)
+			MapArt.draw_furnishing(self, data, -position)
 			draw_set_transform(Vector2.ZERO)
 		elif object_kind == "rock": MapArt.rock(self, Vector2.ZERO)
 		elif object_kind == "caravan": MapArt.cart(self, Vector2.ZERO)
@@ -213,12 +223,25 @@ func _ready() -> void:
 	speech_layer.projector = self
 	speech_layer.z_index = 20
 	add_child(speech_layer)
+	weather_layer = WeatherLayer.new()
+	weather_layer.z_index = 14   # over the people, under the night
+	add_child(weather_layer)
+	label_layer = LabelLayer.new()
+	label_layer.view = self
+	label_layer.z_index = 16   # town names over the roofs and the night
+	add_child(label_layer)
+	night = NightLayer.new()
+	night.projector = self
+	night.z_index = 15   # over the world and the people, under the speech bubbles
+	add_child(night)
 
 func animate(delta: float, paused: bool, speed: int) -> void:
 	if simulation == null:
 		return
 	var t := Time.get_ticks_usec()
 	_sync_landscape()
+	_sync_ground_weather()
+	_sync_season()
 	_sync_decor(delta)
 	t = _lap("v:landscape+decor", t)
 	motion.track_trees = not is_far()
@@ -226,21 +249,42 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	motion.view_cells = Rect2i(floori(tracked.position.x / CELL), floori(tracked.position.y / CELL), ceili(tracked.size.x / CELL) + 1, ceili(tracked.size.y / CELL) + 1)
 	motion.update(simulation.state, delta, paused, speed)
 	t = _lap("v:animation_director", t)
+	var player_key := str(simulation.state.get("player", 0))
+	var player_point: Vector2 = motion.actors.get(player_key, {}).get("position", Vector2.ZERO)
+	var roofs_changed: bool = roofs_layer.sync(self, simulation.state, player_point, is_far())
+	if is_far() != decor_far:
+		# Zoomed far out, a building is just its roof: its floor image is not drawn.
+		decor_far = is_far()
+		for decor_key in decor_nodes:
+			if str(decor_key).begins_with("building:"): decor_nodes[decor_key].visible = not decor_far
 	_sync_characters(0.0 if paused else minf(delta, 0.1) * speed)
 	t = _lap("v:characters_sync", t)
 	if not paused: atmosphere_time += minf(delta, 0.1) * speed
 	fixture_motion.update(simulation.state,delta,paused,speed)
+	roofs_layer.animate_smoke(fixture_motion.running, atmosphere_time)
+	var depth_count: int = depth_objects.size()
 	_sync_depth_objects()
+	if roofs_changed or depth_objects.size() != depth_count: _hide_roofed_doors()
+	if not is_far(): _repaint_house()
 	t = _lap("v:depth_sync", t)
 	_update_doors(minf(delta, 0.1))
 	t = _lap("v:doors", t)
 	# Lighting follows the authoritative 24-hour clock and freezes on pause.
-	var sun: float = sin((float(simulation.state.tick % 14400) / 14400.0 - 0.25) * TAU)
-	var light: float = smoothstep(-0.35, 0.25, sun)
+	# The four parts of the day (DayClock): dawn from 04:00, full light 06:00-20:00 with the evening
+	# turning golden, dusk 20:00-22:00, dark night 22:00-04:00.
+	var day_fraction: float = float(simulation.state.tick % 14400) / 14400.0
+	var light: float = DayClock.light_amount(day_fraction)
+	var glow: float = DayClock.evening_glow(day_fraction)
 	var weather: Dictionary = simulation.state.get("weather", {})
 	var overcast: float = _weather_amount(weather, "rain") * 0.17 + _weather_amount(weather, "snow") * 0.10 + _weather_amount(weather, "fog") * 0.13
-	daylight.color = Color("8797b0").lerp(Color("fff1d5"), light).darkened(overcast)
+	# The night layer does the darkening (with light pools cut out); the tint only cools the colours.
+	daylight.color = Color("c3cbe0").lerp(Color("fff1d5"), light).lerp(Color("ffd49a"), glow * 0.45 * (1.0 - overcast * 2.0)).darkened(overcast)
 	sun_overcast = overcast
+	weather_layer.simulation = simulation
+	weather_layer.update(view_bounds(), is_far(), _weather_amount)
+	night.simulation = simulation
+	night.update(minf(delta, 0.1), view_bounds(), overcast, is_far())
+	t = _lap("v:night", t)
 	_update_shadow_layers()
 	# Speech bubbles only while someone is talking (plus one redraw to clear the last one).
 	var talking: bool = false
@@ -291,6 +335,51 @@ func _sync_landscape() -> void:
 	landscape.material.set_shader_parameter("dust_center", centres[3])
 	landscape.material.set_shader_parameter("road_mask", roads.bake(state, region))
 
+## The season shown, blended over the first day of each season: landscape colours, trees, grass.
+var season_key: Array = []
+func _sync_season() -> void:
+	var tick: int = int(simulation.state.tick)
+	var Weather = load("res://sim/world/weather.gd")
+	var season: int = Weather.season_of(tick)
+	var season_ticks: int = Weather.DAY * Weather.SEASON_DAYS
+	var into: float = clampf(float(tick % season_ticks) / float(Weather.DAY), 0.0, 1.0)
+	if tick < Weather.DAY: into = 1.0   # a new game opens in summer: nothing to blend from
+	var key := [season, snappedf(into, 0.05)]
+	if key == season_key: return
+	season_key = key
+	MapArt.season = season
+	MapArt.previous_season = (season + 3) % 4
+	MapArt.season_blend = into
+	var weights := [0.0, 0.0, 0.0, 0.0]
+	weights[(season + 3) % 4] += 1.0 - into
+	weights[season] += into
+	landscape.material.set_shader_parameter("season_weights", Vector4(weights[0], weights[1], weights[2], weights[3]))
+	background.queue_redraw()
+	for node in depth_objects.values():
+		if node.object_kind == "tree": node.queue_redraw()
+
+## Wet ground, snow and road mud per town, for the landscape shader (set only when they change).
+var weather_uniforms: Array = []
+func _sync_ground_weather() -> void:
+	var s: Dictionary = simulation.state
+	var regions: Dictionary = s.get("weather", {}).get("regions", {})
+	var wet := Vector3.ZERO
+	var snow := Vector3.ZERO
+	var mud := Vector3.ZERO
+	for i in range(3):
+		var region: Dictionary = regions.get(str(i + 1), s.get("weather", {}) if regions.is_empty() else {})
+		if region.is_empty(): continue
+		var rain: float = _weather_amount(region, "rain")
+		wet[i] = maxf(rain, float(region.get("mud", 0)) / 100.0 * 0.6)
+		snow[i] = float(region.get("snow", 0)) / 100.0
+		mud[i] = float(region.get("mud", 0)) / 100.0
+	var signature := [snappedf(wet.x, 0.02), snappedf(wet.y, 0.02), snappedf(wet.z, 0.02), snappedf(snow.x, 0.02), snappedf(snow.y, 0.02), snappedf(snow.z, 0.02), snappedf(mud.x, 0.02), snappedf(mud.y, 0.02), snappedf(mud.z, 0.02)]
+	if signature == weather_uniforms: return
+	weather_uniforms = signature
+	landscape.material.set_shader_parameter("town_wet", wet)
+	landscape.material.set_shader_parameter("town_snow", snow)
+	landscape.material.set_shader_parameter("town_mud", mud)
+
 func snap_visuals() -> void:
 	road_buildings = -1
 	decor_signatures.clear()
@@ -324,7 +413,9 @@ func _sync_characters(delta: float = -1.0) -> void:
 			add_child(character)
 			character.setup(entity.id, entity.kind == "player", entity.kind == "raider")
 			character_models[key] = character
-		character_models[key].z_index = 2 if pose.get("action", "") == "rest" and int(pose.get("rest_rot", -1)) >= 0 else 0  # sleepers lie on top of the bed
+		character_models[key].z_index = 2 if (pose.get("action", "") == "rest" and int(pose.get("rest_rot", -1)) >= 0) or pose.get("action", "") in ["bench", "squat", "deadlift", "pullup"] else 0  # sleepers lie on top of the bed; a lifter is drawn over the gear
+		# Inside a building with its roof on (not the one you're in): not seen, and not drawn.
+		character_models[key].visible = not roofs_layer.covered(simulation.state, key, pose.position)
 		# On the map a figure is a few pixels tall: it still moves every frame, but its pose is
 		# repainted on one frame in four (staggered), which is not visible at that size.
 		var zoom: float = get_viewport().get_camera_2d().zoom.x if get_viewport().get_camera_2d() != null else 1.0
@@ -424,6 +515,14 @@ func _rebuild_depth_index(s: Dictionary) -> void:
 			depth_index[bucket].append(["tree:%d" % entity.id, "tree", Vector2(cell) * CELL, int(entity.id)])
 		elif kind in ["stash", "caravan"] and entity.has("cell"):
 			mover_ids.append(int(entity.id))
+	# The bandit camp's crates and woodpile are blocked cells (cover), drawn by the camp art.
+	var camp_props: Dictionary = {}
+	if s.has("bandits"):
+		var Bandits = load("res://sim/factions/bandits.gd")
+		for kind in ["crate", "woodpile"]:
+			for offset in Bandits.PROPS[kind]:
+				var at: Array = Bandits.at_camp(s.bandits.cell, offset)
+				camp_props["%d,%d" % [at[0], at[1]]] = true
 	for cell_key in s.world.blocked:
 		var comma: int = cell_key.find(",")
 		var x: int = int(cell_key.substr(0, comma))
@@ -432,6 +531,7 @@ func _rebuild_depth_index(s: Dictionary) -> void:
 		for rr in big_rocks:
 			if x >= rr[0] and x < rr[0] + rr[2] and y >= rr[1] and y < rr[1] + rr[3]: under_big_rock = true; break
 		if under_big_rock: continue  # drawn once as the large boulder
+		if camp_props.has(cell_key): continue   # the bandit camp's crates and woodpile have their own art
 		var bucket := _depth_chunk(x, y)
 		if not depth_index.has(bucket): depth_index[bucket] = []
 		depth_index[bucket].append(["rock:" + cell_key, "rock", Vector2(x, y) * CELL, 0])
@@ -466,7 +566,7 @@ func _rebuild_building_items(s: Dictionary) -> void:
 		# Doors: one in every outside doorway and one in every passage between rooms.
 		var doors: Array = []
 		var out := Vector2(Orient.outward(int(entity.get("door_side", 2))))
-		doors.append({"suffix": "out", "cells": [entity.door], "axis": "h" if absf(out.y) > 0.5 else "v", "inward": -out, "style": "heavy" if entity.kind in ["office", "warehouse", "market", "sawmill", "bakery", "forge"] else "plank", "double": false})
+		doors.append({"suffix": "out", "cells": [entity.door], "axis": "h" if absf(out.y) > 0.5 else "v", "inward": -out, "style": "heavy" if entity.kind in ["office", "warehouse", "market", "sawmill", "bakery", "forge", "saloon", "town_hall"] else "plank", "double": false})
 		var gap_index := 0
 		# The office's inner gap is the jail cell: its iron door is drawn with the building
 		# (open or shut with cell_open), so it gets no wooden door that swings for passers-by.
@@ -581,6 +681,7 @@ func _sync_depth_objects() -> void:
 		match entry[1]:
 			"fixture": node.fixture_index = entry[4]
 			"furniture":
+				if str(entry[4].get("kind", "")) == "deck": node.z_index = -1   # the terrace floor, under everyone
 				if node.furniture_data != entry[4]:
 					node.furniture_data = entry[4]
 					node.queue_redraw()
@@ -660,8 +761,8 @@ func draw_static(canvas: Node2D) -> void:
 		MapArt.vegetation(canvas, bounds, garden_exclusions, atmosphere_time, motion.wind_strength, roads.coverage, Terrain.town_centres(s)[3] - Vector2(0, 2))
 	var weather: Dictionary = s.get("weather", {})
 	var snow: float = float(weather.get("snow", 0)) / 100.0
-	if snow > 0.0:
-		canvas.draw_rect(bounds, Color(0.83, 0.89, 0.88, snow * 0.56))
+	if snow > 0.0:   # the ground itself turns white in the landscape shader; this pales the grass tufts
+		canvas.draw_rect(bounds, Color(0.83, 0.89, 0.88, snow * 0.35))
 	for entity in s.entities.values():
 		if not entity.has("cell") or entity.kind in ["resident", "player", "raider", "tree", "caravan", "stash"]:
 			continue
@@ -696,7 +797,7 @@ func _draw_world() -> void:
 		var point := Vector2(entity.cell[0], entity.cell[1]) * CELL
 		if motion.actors.has(str(entity.id)):
 			point = motion.actors[str(entity.id)].position
-		if bounds.has_point(point):
+		if bounds.has_point(point) and not roofs_layer.covered(s, str(entity.id), point):   # not inside a roofed building
 			visible.append({"entity": entity, "point": point})
 	visible.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.point.y < b.point.y or (a.point.y == b.point.y and a.entity.id < b.entity.id))
 	visible_entities = visible.size()
@@ -710,9 +811,15 @@ func _draw_world() -> void:
 	_draw_shotgun(s)
 	_draw_brawl(s)
 	t = _lap("dw:combat+blood", t)
+	# Campfires burn and flicker every frame (the stone ring and logs are in the background).
+	if not is_far():
+		for camp in World.of_kind(s, "bandit_camp"):
+			if bool(camp.get("abandoned", false)): continue   # a cold, empty camp
+			var fire_at := Vector2(camp.cell[0], camp.cell[1]) * CELL
+			if bounds.has_point(fire_at): MapArt.campfire_flames(self, fire_at, atmosphere_time)
 	_draw_travel_goal(s)
-	_draw_map_labels(s)
-	_draw_weather(s, bounds)
+	_draw_wanted_posters(s, bounds)
+	label_layer.queue_redraw()
 	_lap("dw:labels+weather", t)
 
 ## Blood left on the ground by fights (pools and flung drops that darken as they dry), a short
@@ -737,7 +844,12 @@ func _draw_brawl(s: Dictionary) -> void:
 				var angle: float = TAU * float(step) / 10.0
 				var wobble: float = 0.8 + 0.4 * CropArt.rand01(seed_value + step, blob)
 				points.append(centre + Vector2(cos(angle) * rx * wobble, sin(angle) * rx * 0.55 * wobble))
-			draw_colored_polygon(points, color)
+			# A wobble that twists the blob is drawn as a plain oval (filling it errors every frame).
+			if MapArt.Props.fillable(points): draw_colored_polygon(points, color)
+			else:
+				draw_set_transform(centre, 0.0, Vector2(1.0, 0.55))
+				draw_circle(Vector2.ZERO, rx, color)
+				draw_set_transform(Vector2.ZERO)
 		for drop in range(3 + int(decal.size)):
 			var distance: float = 7.0 + CropArt.rand01(seed_value + 9, drop) * 12.0
 			var sideways: float = (CropArt.rand01(drop, seed_value + 5) - 0.5) * 8.0
@@ -773,8 +885,73 @@ func _draw_travel_goal(s: Dictionary) -> void:
 func atime_for_marker() -> float:
 	return atmosphere_time
 
+## Furniture that moves: the fire, the fridge door, a bar lifted off its rack (activities.gd).
+const LIVE_FURNITURE := ["fireplace", "fridge", "squat_rack", "bench_press", "deadlift_platform"]
+func live_furniture(data: Dictionary, building_id: int) -> Dictionary:
+	var live: Dictionary = data.duplicate()
+	live.time = atmosphere_time
+	var s: Dictionary = simulation.state
+	if building_id != int(s.get("player_home", -1)): return live
+	var act: Dictionary = load("res://sim/player/activities.gd").stage_of(s)
+	if act.is_empty() or int(act.index) != int(data.get("index", -1)): return live
+	var stage: String = str(act.stage)
+	live.bar_out = load("res://sim/player/activities.gd").bar_in_hands(str(act.kind), stage, float(act.phase))
+	if act.kind == "fridge":
+		live.open = {"open": float(act.phase), "reach": 1.0, "close": 1.0 - float(act.phase)}.get(stage, 0.0)
+	return live
+
+## Every frame: the live pieces of your house repaint (a handful of nodes, only when it's near).
+func _repaint_house() -> void:
+	var s: Dictionary = simulation.state
+	var home: int = int(s.get("player_home", 0))
+	if home == 0: return
+	var house: Dictionary = s.entities.get(str(home), {})
+	var items: Array = house.get("furniture", [])
+	for index in range(items.size()):
+		if not str(items[index].kind) in LIVE_FURNITURE: continue
+		var node = depth_objects.get("furniture:%d:%d" % [home, index])
+		if node != null: node.queue_redraw()
+
+## The doors of buildings seen from outside are drawn on their front walls (roofs.gd): the
+## floor-plan door nodes underneath are hidden.
+func _hide_roofed_doors() -> void:
+	for key in depth_objects:
+		var node = depth_objects[key]
+		if node.object_kind == "door": node.visible = not roofs_layer.roofed(node.entity_id)
+
+## A wanted notice on a board by the door of each office whose town wants you: a sketch of the
+## stranger in the clothes witnesses described (or your face, if a sheriff saw you).
+func _draw_wanted_posters(s: Dictionary, bounds: Rect2) -> void:
+	var wanted: Dictionary = s.get("law", {}).get("wanted", {})
+	if wanted.is_empty() or is_far(): return
+	for office in World.of_kind(s, "office"):
+		var record: Dictionary = wanted.get(str(office.get("settlement", 0)), {})
+		if record.is_empty() or not office.has("door"): continue
+		var at := Vector2(office.door[0] - 2, office.door[1] + 2) * CELL + Vector2(0, 14)
+		if not bounds.has_point(at): continue
+		draw_set_transform(at, 0.0, Vector2(1.7, 1.7))
+		var p := Vector2.ZERO
+		draw_line(p + Vector2(0, 8), p + Vector2(0, -14), Color("5b4029"), 2.5)                 # the post
+		draw_rect(Rect2(p + Vector2(-11, -30), Vector2(22, 26)), Color("6e4f31"))                 # the board
+		draw_rect(Rect2(p + Vector2(-9, -28), Vector2(18, 22)), Color("eadcb4"))                 # the notice
+		draw_string(font, p + Vector2(-10, -22.5), "WANTED", HORIZONTAL_ALIGNMENT_CENTER, 20, 5, Color("5a1f16"))
+		var described: Dictionary = record.get("outfit", {})
+		var hat: Color = load("res://sim/entities/outfits.gd").color(str(described.get("hat", "hat:0")), Color("3a2c22"))
+		var coat: Color = load("res://sim/entities/outfits.gd").color(str(described.get("vest", "vest:0")), Color("6b5a44"))
+		draw_circle(p + Vector2(0, -15), 3.2, Color("c9a982"))                                   # the face
+		draw_rect(Rect2(p + Vector2(-5, -19.5), Vector2(10, 2)), hat)                             # the hat
+		draw_rect(Rect2(p + Vector2(-4.5, -12), Vector2(9, 5)), coat)                             # the coat
+		draw_string(font, p + Vector2(-10, -6.8), "%d COINS" % (int(record.hours) * 10), HORIZONTAL_ALIGNMENT_CENTER, 20, 4, Color("5a1f16"))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## Town names sit on a layer of their own so the roofs never cover them.
+class LabelLayer extends Node2D:
+	var view: Node2D
+	func _draw() -> void:
+		if view.simulation != null: view._draw_map_labels(self, view.simulation.state)
+
 ## On the map view: settlement names and a marker on the player, sized for the screen not the world.
-func _draw_map_labels(s: Dictionary) -> void:
+func _draw_map_labels(c: CanvasItem, s: Dictionary) -> void:
 	var camera := get_viewport().get_camera_2d()
 	if camera == null or camera.zoom.x >= 0.6: return
 	var inverse: float = 1.0 / camera.zoom.x
@@ -783,14 +960,8 @@ func _draw_map_labels(s: Dictionary) -> void:
 		var store: Array = s.entities[str(town.warehouse)].cell
 		var at := Vector2(store[0], store[1] - 16) * CELL
 		var size: Vector2 = font.get_string_size(town.name, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * inverse))
-		draw_rect(Rect2(at + Vector2(-size.x / 2.0 - 8 * inverse, -size.y), size + Vector2(16 * inverse, 6 * inverse)), Color(0.07, 0.06, 0.04, 0.6))
-		draw_string(font, at + Vector2(-size.x / 2.0, -4 * inverse), town.name, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * inverse), Color("f7e3ac"))
-	var player: Dictionary = s.entities.get(str(s.get("player", 0)), {})
-	if not player.is_empty():
-		var position: Vector2 = motion.actors.get(str(player.id), {}).get("position", Vector2(player.cell[0], player.cell[1]) * CELL)
-		draw_circle(position, 9.0 * inverse, Color(0.07, 0.06, 0.04, 0.75))
-		draw_circle(position, 6.5 * inverse, Color("ffd45a"))
-		draw_string(font, position + Vector2(12 * inverse, 5 * inverse), "You", HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * inverse), Color("fff2ce"))
+		c.draw_rect(Rect2(at + Vector2(-size.x / 2.0 - 8 * inverse, -size.y), size + Vector2(16 * inverse, 6 * inverse)), Color(0.07, 0.06, 0.04, 0.6))
+		c.draw_string(font, at + Vector2(-size.x / 2.0, -4 * inverse), town.name, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * inverse), Color("f7e3ac"))
 
 func _draw_combat(s: Dictionary) -> void:
 	var combat: Dictionary = s.get("local_combat", {})
@@ -861,23 +1032,6 @@ func _weather_amount(weather: Dictionary, kind: String) -> float:
 	var blend: float = clampf(float(simulation.state.tick - int(weather.get("since", 0))) / 300.0, 0.0, 1.0)
 	return (1.0 - blend if weather.get("previous", "clear") == kind else 0.0) + (blend if weather.get("kind", "clear") == kind else 0.0)
 
-func _draw_weather(s: Dictionary, bounds: Rect2) -> void:
-	var weather: Dictionary = s.get("weather", {})
-	var fog: float = _weather_amount(weather, "fog")
-	if fog > 0.0: draw_rect(bounds, Color(0.72, 0.75, 0.72, fog * 0.16))
-	var rain: float = _weather_amount(weather, "rain")
-	var snow: float = _weather_amount(weather, "snow")
-	if rain + snow <= 0.01: return
-	var count: int = 120
-	for index in range(count):
-		var x: float = fposmod(index * 97.0 + atmosphere_time * (24.0 + weather.get("wind", 25) * 0.3), bounds.size.x)
-		var y: float = fposmod(index * 157.0 + atmosphere_time * (210.0 if rain > snow else 35.0), bounds.size.y)
-		var p: Vector2 = bounds.position + Vector2(x, y)
-		if rain > snow:
-			draw_line(p, p + Vector2(-4, 13), Color(0.72, 0.81, 0.86, rain * 0.48), 1.0)
-		else:
-			draw_circle(p, 1.8, Color(0.94, 0.96, 0.94, snow * 0.75))
-
 func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D = null) -> void:
 	if canvas == null: canvas = self
 	var selected: bool = entity.id == selected_id
@@ -914,11 +1068,10 @@ func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D 
 					canvas.draw_line(previous, next, Color(0.9, 0.8, 0.5, 0.55), 2)
 					previous = next
 		"player":
-			canvas.draw_string(font, p + Vector2(-9, -52), "YOU", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color("fff2ce"))
 			_name_tag(canvas, p, entity.name, Color("ffe9a8"))
 		"farm":
 			if Crops.plot_for_farm(s, entity.id).is_empty(): MapArt.farm(canvas, p, s.inventories[str(entity.id)].items.get("food", 0))
-		"warehouse", "home", "sawmill", "bakery", "forge", "office", "market":
+		"warehouse", "home", "sawmill", "bakery", "forge", "office", "market", "saloon", "town_hall":
 			var footprint := World.building_rect(entity)
 			var rect := Rect2(Vector2(footprint.position) * CELL - Vector2.ONE * CELL / 2, Vector2(footprint.size) * CELL)
 			# Floors and frontage are painted once into a cached texture (see _sync_decor).
@@ -932,6 +1085,8 @@ func _draw_entity(s: Dictionary, entity: Dictionary, p: Vector2, canvas: Node2D 
 			MapArt.construction(canvas, entity, site, rect)
 		"caravan": MapArt.cart(canvas, p)
 		"signpost": MapArt.signpost(canvas, p, entity.get("ways", []))
+		"street_lamp": MapArt.street_lamp(canvas, p)
+		"bandit_camp": MapArt.bandit_camp(canvas, p, s.get("bandits", {}).get("members", []).size() if int(s.get("bandits", {}).get("camp", 0)) == int(entity.id) else 3)
 		"ore":
 			if entity.get("big", false):
 				var rr: Array = entity.rock_rect
@@ -1008,8 +1163,8 @@ func draw_speech(canvas: Node2D) -> void:
 ## screen) towards noon, then lengthen to the right through the afternoon and fade at dusk.
 func sun_shadow(tick: int) -> Dictionary:
 	var day: float = float(tick % 14400) / 14400.0
-	var elevation: float = sin((day - 0.25) * TAU)          # matches the daylight colour cycle
-	var arc: float = clampf((day - 0.25) / 0.5, 0.0, 1.0)   # 06:00 east .. 18:00 west
+	var elevation: float = DayClock.sun_elevation(day)      # 0 at sunrise (05:00) and sunset (21:00), highest at 13:00
+	var arc: float = DayClock.sun_arc(day)                  # 05:00 east .. 21:00 west
 	var direction := Vector2(-cos(arc * PI), -0.42 * sin(arc * PI))
 	var angle: float = asin(clampf(elevation, 0.0, 1.0)) * 1.05
 	var length: float = clampf(cos(angle) / maxf(0.05, sin(angle)), 0.35, 3.4)
@@ -1198,6 +1353,7 @@ func is_far() -> bool:
 	return camera != null and camera.zoom.x < FAR_ZOOM
 
 var decor_nodes: Dictionary = {}
+var decor_far: bool = false
 var decor_signatures: Dictionary = {}
 var door_hold: Dictionary = {}
 var overlay_labels: bool = false      # set by the controller while the map overlay is up
@@ -1214,7 +1370,7 @@ func _sync_decor(delta: float) -> void:
 		var square: Array = s.entities[str(settlement.warehouse)].cell
 		wanted["plaza:%d" % settlement.id] = ["plaza", int(settlement.id), str(settlement.get("stalls", [])), Rect2(Vector2(square[0], square[1] + 7) * CELL + Vector2(-520, -110), Vector2(1040, 330))]
 	for entity in s.entities.values():
-		if entity.has("footprint") and entity.kind in ["warehouse", "home", "sawmill", "bakery", "forge", "office", "market"]:
+		if entity.has("footprint") and entity.kind in World.BUILDING_KINDS:
 			var fp := World.building_rect(entity)
 			var rect := Rect2(Vector2(fp.position) * CELL - Vector2.ONE * CELL / 2, Vector2(fp.size) * CELL)
 			wanted["building:%d" % entity.id] = ["building", int(entity.id), "%s:%s:%s:%s" % [entity.kind, str(entity.footprint), str(entity.get("door", [])), str(entity.get("cell_open", false))], rect.grow(48)]
@@ -1234,6 +1390,7 @@ func _sync_decor(delta: float) -> void:
 			add_child(node)
 			move_child(node, background.get_index())
 			decor_nodes[key] = node
+			if decor_far and str(key).begins_with("building:"): node.visible = false
 		if entry[0] == "building": decor_nodes[key].modulate = house_tint(s, int(entry[1]))
 		if decor_signatures.get(key, "") != entry[2]:
 			decor_signatures[key] = entry[2]
@@ -1247,6 +1404,7 @@ func _sync_decor(delta: float) -> void:
 
 ## Name plate centred underneath a character; it follows the actor's drawn position.
 func _name_tag(canvas: Node2D, p: Vector2, label: String, color: Color) -> void:
+	if is_far(): return   # zoomed out to the overview: no name tags
 	var size: Vector2 = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10)
 	var origin: Vector2 = p + Vector2(-size.x / 2.0, 14)
 	canvas.draw_rect(Rect2(origin + Vector2(-2, -9), size + Vector2(4, 3)), Color(0.07, 0.06, 0.04, 0.55))

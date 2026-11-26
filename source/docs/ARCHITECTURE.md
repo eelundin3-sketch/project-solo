@@ -39,7 +39,7 @@ Last verified against the code: 2026-11-20 (branch `feature/quick-wins`). Facts 
 
 `sim/core/simulation.gd` is the `Simulation` class. Everything lives in one dictionary, `sim.state`.
 
-- **Ticks:** 10 per second at 1x speed. 10 ticks = 1 in-game minute, 600 = 1 hour, **14,400 = 1 day**. Tick 0 is midnight.
+- **Ticks:** 10 per second at 1x speed. 10 ticks = 1 in-game minute, 600 = 1 hour, **14,400 = 1 day**. Tick 0 is midnight on day 1, the first day of summer; a new game starts at tick 4,200 (07:00). The day has four parts (`sim/world/day_clock.gd`): morning 04-10, day 10-16, evening 16-22, night 22-04. Light, the sun, sleep and shop hours all read that one file.
 - **Clock:** `sim_clock.gd` turns frame time into whole ticks. At most 10 ms of simulation per frame, and the backlog is clamped so one slow tick cannot snowball. The tick count, not wall time, is the authority.
 - **Commands and events:** two queues in state, `commands` and `events`, drained at the start of each step in due-tick then id order. Player actions are the strings in `PLAYER_ACTS`. `submit(kind, payload)` queues a command.
 - **Randomness:** `sim.random_int("stream_name", low, high)`; each stream is an independent seeded generator stored in `state.rng`. Streams in use include `brawl, speech, wounds, gunfire, shotgun, talk, gossip, bribe, haggle, family, names, weather:kind`. Give each new feature its own stream.
@@ -67,7 +67,7 @@ Other timed events: 06:00 autosave (in `world_controller.gd`, view-side), 07:00 
 - **Entities:** about 6,400 at start, nearly all trees; plus warehouses, homes (13), farms, sawmills, bakeries, forges, ore rocks, market stalls (18), offices (3), signposts (3), chests (23).
 - **Roads:** `road_planner.gd` routes three links with shared trunks and forks; `world.roads` holds segments and junctions; signposts at forks carry measured `ways` (distance and heading to each town). `pace.gd` makes walking about 15% quicker on town streets and 30% on link roads (integer maths with a carried fraction).
 - **Fidelity:** residents far from the player run at "coarse" or "aggregate" fidelity (`fidelity.gd`) so they cost less; identity, goods and needs survive every transition.
-- **Weather:** one global record (`state.weather`, re-rolled every 3,600 ticks; seasons are 7-day blocks). Per-town weather does not exist yet.
+- **Weather:** one record per town (`state.weather.regions`, re-rolled every 3,600 ticks from each town's climate); the top-level record is the player's town. Seasons are 15 days, starting with summer (`Weather.season`, `SEASON_OFFSET`).
 
 ## 5. Key state (`sim.state`) by area
 

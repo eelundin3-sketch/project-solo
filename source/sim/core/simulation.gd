@@ -51,6 +51,15 @@ const Look = preload("res://sim/player/look.gd")
 const Bleeding = preload("res://sim/combat/bleeding.gd")
 const FamilyEconomy = preload("res://sim/entities/family_economy.gd")
 const StallService = preload("res://sim/economy/stall_service.gd")
+const Light = preload("res://sim/world/light.gd")
+const Bandits = preload("res://sim/factions/bandits.gd")
+const OutlawArrest = preload("res://sim/law/outlaw_arrest.gd")
+const Notoriety = preload("res://sim/law/notoriety.gd")
+const Investigation = preload("res://sim/law/investigation.gd")
+const Activities = preload("res://sim/player/activities.gd")
+const Bounties = preload("res://sim/law/bounties.gd")
+const Capital = preload("res://sim/settlement/capital.gd")
+const Reinforcements = preload("res://sim/law/reinforcements.gd")
 ## Commands that are the player doing something: refused while down or restrained, and they wake
 ## a sleeping player.
 const PLAYER_ACTS := ["move_player", "player_strike", "interact", "shotgun_fire", "hotbar_use", "eat", "drink", "treat_body", "context_action", "walk_to", "travel", "loot_take", "loot_all", "loot_coins", "loot_strip", "loot_give", "wear_item", "take_off", "hold_item", "hotbar_assign", "crouch_toggle", "travel_run", "shotgun_toggle", "shotgun_reload", "person_trade", "take_item", "surrender", "haggle"]
@@ -89,7 +98,11 @@ func enable_society() -> void:
 	Society.initialize(state)
 	Risk.initialize(state)
 
+## A new game: the first day of summer, at 07:00 (DayClock: morning).
+const START_TICK := 4200
+
 func start_game(population: int = 5) -> void:
+	state.tick = START_TICK
 	start_village(population)
 	enable_production()
 	enable_economy()
@@ -102,11 +115,26 @@ func start_game(population: int = 5) -> void:
 	Households.upgrade(self)
 	FamilyEconomy.ensure(state)
 	Chests.ensure_all(self)
+	Capital.ensure(self)   # Dustvale, the capital: the town house, the governor, the saloon and its barkeep (before the woods, which keep clear of buildings)
+	load("res://sim/settlement/player_house.gd").ensure(self)   # your own house, west side of Alder Hollow (before the woods too)
 	World.lay_out_woodlands(self)
 	for town in state.settlements.values(): Professions.assign(state, town.id)
 	Sheriff.ensure(self)
 	Market.ensure_tents(self)
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # last: the roads, woods and towns are all in place
+	Light.ensure_lamps(self)
+	Weather.ensure_regions(state)   # each town its own weather, now that the towns exist
+	Bandits.ensure_camp(self)       # a bandit camp far out in the wilds
+	warm_scripts()
+
+## Scripts that daily and occasional work loads on demand (load() inside functions, to avoid
+## preload cycles). Loading them once when a game starts or is restored keeps the first noon of a
+## session from paying for reading them from disk. Changes no game state.
+const WARM_SCRIPTS := ["res://sim/player/requests.gd", "res://sim/entities/gossip.gd", "res://sim/factions/reputation.gd",
+	"res://sim/factions/society.gd", "res://sim/entities/family_economy.gd", "res://sim/economy/market.gd",
+	"res://sim/economy/traders.gd", "res://sim/world/chronicle.gd", "res://sim/law/witness_reports.gd"]
+static func warm_scripts() -> void:
+	for path in WARM_SCRIPTS: load(path)
 
 func new_id() -> int:
 	var result: int = state.next_id
@@ -143,6 +171,12 @@ func step() -> void:
 		Brawl.update(self)
 		Probe.mark("brawl")
 		Law.update(self)
+		Bandits.update(self)
+		OutlawArrest.update(self)   # bandits in town, and the sheriffs bringing them in
+		Notoriety.update(self)      # a wanted stranger, as the townsfolk see it
+		Investigation.update(self)  # missing people, found bodies, the sheriff's cases
+		Bounties.update(self)       # bandits you've tied up, following you in
+		Reinforcements.update(self)
 		Probe.mark("law")
 		Gunfire.update(self)
 		Probe.mark("gunfire")
@@ -191,7 +225,7 @@ func step() -> void:
 				state.player_path = []
 				if not destination.is_empty():
 					var by_road: bool = int(state.player_control.get("travelling", 0)) != 0
-					var reroute := Navigation.request_travel_path(state, state.entities[str(state.player)].cell, destination) if by_road else Navigation.request_path(state, state.entities[str(state.player)].cell, destination)
+					var reroute := Navigation.request_travel_path(state, state.entities[str(state.player)].cell, destination) if by_road else Navigation.request_walk_path(state, state.entities[str(state.player)].cell, destination)
 					if reroute.ok: state.player_path = reroute.path
 		Probe.mark("local_combat+route")
 		if state.tick % 10 == 0:
@@ -214,6 +248,7 @@ func step() -> void:
 			Planner.update(self)
 		Probe.mark("planner")
 		if state.has("markets") and state.tick % 600 == 300: Market.ensure_tents(self)
+		if state.has("markets") and state.tick % 600 == 310: Market.note_prices(state)
 		if state.has("markets") and state.tick % 300 == 0:
 			for town_id in state.markets:
 				Market.clear_market(state, int(town_id))
@@ -228,16 +263,27 @@ func step() -> void:
 		Needs.update(state)
 		Look.update(state)
 		Sleep.update(state)
+		Activities.update(self)   # at home: a drink, a rest, a workout (activities.gd)
 		Hotbar.update(state)
 		Shotgun.update(self)
 		Probe.mark("player+needs+shotgun")
-		if state.has("households") and state.tick % 14400 == 7200: Households.daily(self)
+		if state.has("households"):
+			var noon: int = state.tick % 14400 - 7200
+			if noon == 0: Households.daily(self, false)   # each town's share follows on its own tick
+			elif noon > 0 and noon % 40 == 0 and noon / 40 <= state.settlements.size():
+				# Each town's share on its own tick: 12:04, 12:08, 12:12 (in town id order).
+				var keys: Array = state.settlements.keys()
+				keys.sort_custom(func(a, b) -> bool: return int(a) < int(b))
+				Households.daily_town(self, state.settlements[keys[noon / 40 - 1]])
 		if state.has("households") and state.tick % 14400 == 11400: FamilyEconomy.payday(self)   # 19:00
 		Crops.update(state)
 		Probe.mark("daily+crops")
-		if state.tick % 14400 == 0:
+		if state.tick % 600 == 0:
+			# Woodland grows once a day per tree, spread over the hours: each tree at the hour its id
+			# gives it (about 260 trees an hour, not all ~6,300 on the stroke of midnight).
+			var hour: int = (state.tick / 600) % 24
 			for entity in World.of_kind(state, "tree"):
-				if true:
+				if int(entity.id) % 24 == hour:
 					if entity.get("felled", false):
 						# A stump sprouts a new tree after a week; a fallen trunk waits to be gathered.
 						if Inventory.amount(state, entity.id, "log") == 0 and state.tick - int(entity.get("felled_tick", 0)) >= 7 * 14400:
@@ -245,7 +291,7 @@ func step() -> void:
 							Inventory.produce(state, entity.id, "log", mini(10, Inventory.available(state, entity.id)))
 					else:
 						Inventory.produce(state, entity.id, "log", mini(2, Inventory.available(state, entity.id)))
-			record("A new day: rye grew in the fields and woodland grew.")
+			if state.tick % 14400 == 0: record("A new day: rye grew in the fields and woodland grew.")
 
 func _stamina_allows_run() -> bool:
 	return state.player_health.stamina > 0 and not state.player_health.get("exhausted", false)
@@ -264,8 +310,31 @@ func _drain(queue_name: String, is_command: bool) -> void:
 		else:
 			apply_event(entry)
 
+## Tied up you can still talk: to the bandit on watch, when he's close.
+func _captive_talk(entry: Dictionary) -> bool:
+	var target: int = int(entry.get("payload", {}).get("target", 0))
+	var npc: Dictionary = state.get("residents", {}).get(str(target), {})
+	if npc.is_empty() or int(npc.get("bandit", 0)) == 0: return false
+	if entry.kind == "context_action" and not str(entry.payload.get("action", "")).begins_with("c_"): return false
+	if not entry.kind in ["interact", "context_action"]: return false
+	var me: Array = state.entities[str(state.player)].cell
+	var at: Array = state.entities[str(target)].cell
+	return maxi(absi(me[0] - at[0]), absi(me[1] - at[1])) <= 4
+
 func apply_command(entry: Dictionary) -> void:
+	# At home doing something (a set of squats, a drink, a rest): F stops it; moving or anything else
+	# winds it down first (the bar goes back on the rack).
+	if state.has("player_control") and Activities.active(state) and entry.kind in PLAYER_ACTS:
+		if entry.kind == "interact": Activities.use(self)
+		else: Activities.stop(state)
+		return
+	# F next to something in your house: use it.
+	if entry.kind == "interact" and state.has("player_control") and not Bandits.captive(state) and not Activities.nearby(state).is_empty():
+		if Activities.use(self): return
 	# Someone lying on the ground cannot act until they are back on their feet.
+	if state.has("brawl") and entry.kind in PLAYER_ACTS and entry.kind != "surrender" and Bandits.captive(state) and not _captive_talk(entry):
+		state.player_control.notice = "You're tied up. F: work at the ropes when the watch is away."
+		return
 	if state.has("brawl") and entry.kind in PLAYER_ACTS and (Brawl.player_down(state) or Law.restrained(state)):
 		return
 	# Asleep: any action (or a key press, sent as "wake") gets the player up; a step only wakes them.
@@ -337,7 +406,7 @@ func apply_command(entry: Dictionary) -> void:
 					for dx in range(-2, 3):
 						var candidate: Array = [goal[0] + dx, goal[1] + dy]
 						if World.walkable(state, candidate) and absi(dx) + absi(dy) < best: best = absi(dx) + absi(dy); target = candidate
-			var route := Navigation.request_path(state, from, target)
+			var route := Navigation.request_walk_path(state, from, target)
 			state.player_control.pending = {}
 			if route.ok and not route.path.is_empty():
 				state.player_path = route.path
@@ -350,6 +419,9 @@ func apply_command(entry: Dictionary) -> void:
 		ContextActions.request(self, int(entry.payload.get("target", 0)), str(entry.payload.get("action", "")), str(entry.payload.get("part", "")))
 		return
 	if entry.kind=="surrender" and state.has("player_control"):
+		if Bandits.captive(state):
+			Bandits.work_ropes(state)   # tied up: F works at the knots
+			return
 		Law.surrender(state)
 		return
 	if entry.kind=="rummage" and state.has("player_control"):
@@ -551,6 +623,11 @@ func restore(snapshot_data: Dictionary) -> void:
 	# After the layout upgrades, which may rebuild furniture: re-links the existing chests.
 	if state.has("households"): Chests.ensure_all(self)
 	load("res://sim/world/road_planner.gd").ensure_ways(state)   # signposts in older saves learn their distances
+	Light.ensure_lamps(self)   # street lamps for saves made before they existed
+	Bandits.ensure_camp(self)  # and the bandit camp
+	Capital.ensure(self)       # and the capital's town house and saloon
+	load("res://sim/settlement/player_house.gd").ensure(self)   # and your house
+	warm_scripts()
 	if state.has("routes"):
 		BodyHealth.initialize(state)
 		PlayerActions.initialize(state)

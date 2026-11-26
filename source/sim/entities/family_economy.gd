@@ -17,7 +17,7 @@ const START_PURSE := 60
 const POCKET_MONEY := 15        # what each grown-up keeps in their own pocket when the purse is set up
 const FOOD_PER_HEAD := 2        # a pantry below this many loaves per person needs shopping
 const CARRY := 8                # what one shopper can carry home
-const SHOPPING_TICK := 4200     # 07:00
+const SHOPPING_TICK := 4500     # 07:30, once everyone is up
 const DAY := 14400
 
 static func purse_key(household_key: String) -> String:
@@ -57,6 +57,14 @@ static func ensure(s: Dictionary) -> void:
 			var leftover: int = int(s.accounts[account])
 			var town_key: String = String(account).substr(10).split(":")[0]
 			var town: Dictionary = s.settlements.get(town_key, {})
+			if town.is_empty():
+				# Keys like "migrant:12" do not start with a town: use the member's town, else the first.
+				var member: Dictionary = s.residents.get(String(account).get_slice(":", 2), {})
+				town = s.settlements.get(str(member.get("settlement", 0)), {})
+				if town.is_empty() and not s.settlements.is_empty():
+					var towns: Array = s.settlements.keys()
+					towns.sort()
+					town = s.settlements[towns[0]]
 			if leftover > 0 and not town.is_empty(): s.accounts[str(town.warehouse)] = int(s.accounts.get(str(town.warehouse), 0)) + leftover
 			s.accounts.erase(account)
 
@@ -144,6 +152,7 @@ static func _shopper(s: Dictionary, household: Dictionary) -> Dictionary:
 		if npc.is_empty() or int(npc.health) <= 0 or npc.occupation in ["Child", "Sheriff", "Trader"]: continue
 		if not npc.get("sleeping", {}).is_empty() or not npc.get("arrest", {}).is_empty() or not npc.get("fear", {}).is_empty(): continue
 		if not npc.get("serving", {}).is_empty() or npc.get("goal", "") != "": continue
+		if not npc.get("migration", {}).is_empty(): continue   # on the way to another town
 		return npc
 	return {}
 

@@ -478,3 +478,278 @@ coming (the target isn't walking toward you and isn't already alert), you can
 kill or knock out without a sound. Such crimes call
 `Law.crime(..., silent = true)`, and then a sheriff counts as a witness only
 with a clear line of sight. Normally any sheriff within 24 cells counts.
+
+## 2026-11-20: Milestone 5, night, weather and seasons
+
+**Light is simulation data.** Street lamps are entities (`street_lamp`) placed at
+fixed spacing beside every town street and lane, with no randomness. They are
+added at the end of `start_game`, and in `restore` for older saves. They burn
+19:30-05:30 on a timer (no lamplighter yet). `Light.level(s, cell)` gives 0-100
+from daylight, lamps within 5 cells and the player's lantern, so milestone 7's
+stealth reads it from the sim. The lantern is an ordinary item, lit while held
+in hand, so it needs no new command. `Needs.is_night` is unchanged, so sleep and
+trespass behave as before; lamps use their own window.
+
+**One darkness pass for the night.** The view draws night as one shader
+rectangle with up to 64 light pools (lamps, lit windows of homes with someone
+awake, lanterns), nearest the middle of the view first. It sits under the
+speech bubbles, which stay readable. The day/night `CanvasModulate` keeps only
+a cool tint, so night is not darkened twice. No `PointLight2D` nodes, because
+each one costs.
+
+**Weather per town; the top-level record is the player's.** `s.weather.regions[town]`
+holds kind, wind, snow, mud and dry days per town, rolled on
+`weather:kind:<id>` from a climate table (Reedbank wet, Dustvale dry).
+`s.weather.kind/previous/since/wind/snow` mirrors the player's town at each
+roll and when the player walks into another town's weather, so every old
+reader works unchanged. A tile belongs to the nearest town (`Region.of`, now
+the one shared lookup; `Gunfire.town_of` uses it). A world without towns keeps
+the old single roll. Old saves start each town with the weather they had.
+
+**Drought and seasons work through growth, not new stock.** Dry days slow
+crops (half speed from 5, none from 9) and cut the yield per cell (never below
+1). Summer grows 20% faster and winter not at all. The first frost turns every
+growing plot fallow (the crop is lost). The autumn harvest leaves a field bare,
+and spring sows it again. Farmers switch to wood and ore work for the winter
+(`seasonal: "Farmer"`) and go back to farming in spring. A late-autumn-to-spring
+soak shows at worst 4% of people near starving.
+
+**Whole families move.** After a harvest at half or less, a farming household
+with an empty pantry may move (25% a day each, never the town's last farmer)
+to the town that most wants farmers and has room. Room is a free house, or
+else beds in the lodge. The household keeps its key, so purse and surname move
+with it. This also fixed coins being erased when a `migrant:` household broke
+up: `FamilyEconomy.ensure` now finds that household's town.
+
+**Fog and mud.** Fog cuts sight ranges by 40% where it lies: witnesses, fear,
+seeing a shot, and sheriffs spotting a wanted player. Rain makes road mud (5 an
+hour, drying 2 an hour); above 50 it adds 15% to each step on a road
+(`Pace.delay`).
+
+**Prices still follow stock.** The trend arrow compares today's quote with a
+daily snapshot (`markets[town].trend`). Prices the player has seen in a town
+(`player_status.known_prices`, refreshed hourly while there) give a "better in
+<town>" hint when 3 coins or more better, greyed after 3 days.
+
+**Not done here, on purpose:** lanterns are not sold in stores yet (the player
+starts with one); autumn trees only shift toward olive, because the tree art is
+drawn dark green and needs new art for true orange leaves; there is no rain
+sound (S3, milestone 13).
+
+## 2026-11-20: Four parts of the day, 15-day seasons, a summer start
+
+**[owner]** The day has four parts of six hours: morning 04-10, day 10-16,
+evening 16-22, night 22-04. Seasons are 15 days. A new game opens on the first
+day of summer, at 07:00 (the owner chose 07:00 over midnight or 10:00).
+
+**One clock file.** `sim/world/day_clock.gd` holds the parts of the day, the
+daylight curve (dawn 04-06, full light 06-20, dusk 20-22, dark at night) and
+the sun's path (rises east at 05:00, highest at 13:00, sets west at 21:00).
+The day tint (with a golden evening), the night darkness, sun shadows,
+`Light.level`, street lamps (20:00-05:00), `Needs.is_night`, trespass night
+and shop hours all read it, so they cannot drift apart again. Before this,
+night meant four different things in four files.
+
+**Each person keeps their own hours.** Bedtime between 21:00 and 22:00 and
+waking time between 06:00 and 07:00, fixed from the person's id (no random
+stream, nothing saved). A tired person (fatigue 20 or more) goes to bed after
+their bedtime; the exhausted (75) still sleep any time. Shops are open
+07:00-21:00, family shopping is at 07:30, and the morning garden chores are at
+07:00-08:30, so people are up first. Greetings match the part of the day.
+
+**Summer first without moving tick 0.** The season formula carries an offset
+(`SEASON_OFFSET = 1`) instead of the game starting at a later tick, so tick 0
+is still day 1 at midnight and day numbers stay right. `start_game` sets the
+tick to 4,200 (07:00); `start_village` (bare test worlds) keeps tick 0. Saves
+made before this keep their tick and so may find themselves in a different
+season.
+
+## 2026-11-21: Winter stores, smoke, the jail release, the bandit camp, and Dustvale as capital
+
+**Winter stores [owner chose "store up in autumn"].** With 15-day winters the
+towns starved (up to 70% near starving). The cause was rye: it piled up at the
+farms because carriers took a farm's food first, the storehouse stopped taking
+an item at 200, and the baker stopped at 300 bread. Now carriers take whichever
+of food or rye the storehouse has less of, the storehouse lays up 800 of each,
+and the baker bakes up to 800. The winter soak shows at worst 4%.
+
+**Smoke goes outside [owner].** The bakery oven's and the forge's flue runs up
+through the building's back wall to a stack outside, and smoke rises there
+only while the stove works. View only.
+
+**Shown out of jail [owner].** On release the sheriff comes into the cell and
+takes the prisoner by the arm, returns their things at the desk, walks them to
+the door and shoves them into the street. New phases `grab` and `show_out` in
+`law.gd`.
+
+**The bandit camp [owner; captivity and reward chosen by the owner].** Three
+bandits are residents with no town (settlement 0, occupation "Bandit"), so the
+town systems pass them by and `bandits.gd` runs them. The camp is placed as far
+from every town as the map allows. They demand your coins and gun; surrender
+hands them over, then they either let you go or tie you up at the camp (50%,
+stream "bandits"). Refusing, running or hurting one starts a fight (they shoot
+with `Gunfire.fire_at_player`). Going down or surrendering means robbery and
+captivity. You slip free once they all sleep (after two hours at least), or
+after a day. Beating them leaves their loot pile and the leader's purse to you
+and records `bandits_cleared`, which every town hears (+25 reputation). Crimes
+against outlaws are not crimes (`Law.crime` ignores town 0 and bandit victims).
+Only full games get a camp (not bare test worlds).
+
+**Dustvale is the capital [owner].** Three sheriffs per town, five in the
+capital (`Capital.sheriffs_wanted`); a second sheriff with the same surname
+keeps his first name, so names stay unique. Two new building kinds, `town_hall`
+and `saloon`, and the building kinds are now one shared list,
+`World.BUILDING_KINDS`. The Governor lives in the town house and works at his
+desk 08:00-16:00. The barkeep lives at the saloon and tends the bar
+14:00-23:00, keeping later hours (bed 23-00, up 08-09). Neither pairs off or
+moves house. Townsfolk drop in 18:00-21:00 (30% once a day), and the player
+can buy a drink (3 coins to the barkeep: thirst and mood). Dustvale's office
+keeps its two sheriff beds: five sheriffs share them in shifts (there is no
+room for a third bed beside the rack).
+
+## 2026-11-25: Far-zoom frame rate accepted [owner]
+
+After milestone 5 and the follow-up work, the overview zoom (0.2) runs at about 52 FPS against 58
+before (-10.5%), just past the rule that a drop of 10% or more is fixed or accepted. The cause is
+mostly more to draw: 28 people instead of 18 (the extra sheriffs, the governor, the barkeep, the
+bandits), street lamps and the new buildings. Normal play (zoom 2) is at 74-75 FPS (budget 60),
+rain at 68 (budget 50), the map unchanged, the worst simulation tick 14 ms (budget 15). The owner
+accepted the far-zoom figure on 2026-11-25. Records: docs/validation/view_benchmark_*_m5_*.json.
+
+## 2026-11-25: Fights that end, reinforcements, a living camp, roofs [owner]
+
+**Sheriffs end fights.** Until the fight turns lethal (you killed someone or keep firing), sheriffs
+aim for your legs, or your gun arm if you shoot back (`Wounds.pick(sim, aim)`, 75% aimed). They
+close in cover to cover, or straight in while you're quiet if there is no cover; when you're in
+cover one of them flanks (`alert.flanker`). Holding your gun without firing for 200 ticks
+(20 s) turns into an arrest; crawling does too. Wounded sheriffs bandage instead of freezing. A
+sheriff shouts at most once every 100 ticks, and only on a change.
+
+**Reinforcements.** A killing by the player with a witness is filed as murder (it was only
+remembered) and sends a civilian runner to the nearest other town (`sim/law/reinforcements.gd`).
+That town sends two sheriffs, always keeping one at home (`Sheriff.strength` counts those away).
+They travel as a trip (one path, cheap position lookup). On arrival they join the fight; if you're
+already caught they visit the office, talk, and go home.
+
+**Arrest from the ground.** A downed suspect is held down while cuffed (`arrest.pinned`), then
+hauled up in a new `lift` phase (40 ticks) before the escort; no more popping up standing.
+
+**Bandit camp.** Three big open tents (one per bandit, slept in), a pot, seats, a woodpile and a
+lookout. By day each bandit takes turns to sit, cook, fetch wood and keep watch; crates, rocks and
+the woodpile are solid cover. The fire is drawn every frame (not baked into the background).
+
+**Roofs.** Every finished building has a roof over its exact shape (`view/world/roofs.gd`), y-sorted
+at its front edge. The roof over the building the player is in is lifted; people inside any other
+roofed building are not drawn. Zoomed far out every roof stays on, building floor images are
+hidden, the "YOU" label and player dot are removed, and name tags are hidden. Town names draw on
+their own layer above the roofs. View only: nothing in `sim/` changed for roofs.
+
+Benchmarks (2026-11-25, same machine, before = commit 5e6bb3b, 1280x720), FPS before -> after:
+noon zoom 2 76.5 -> 72.6 (-5%), zoom 1 50.5 -> 53.5, zoom 0.5 35.6 -> 39.0, far zoom 0.2
+45.0 -> 48.6, map 699 -> 683; night zoom 2 67.3 -> 69.6, far 44.6 -> 48.0. Roofs make the far and
+middle zooms faster (no floors, no people indoors). The machine ran slower overall than in the
+earlier records. Worst simulation tick after warm-up 14.3 ms (budget 15). All 91 tests pass.
+Records: docs/validation/view_benchmark_{before,after}_fights_{12,23}.json.
+
+## 2026-11-25: Bandits, outlaws in town, temperaments, wanted, conversations, investigations [owner]
+
+**One fight engine.** `gunfire.gd` `fight_cycle` (hide, peek, fire, reload, advance, flank,
+bandage) is shared by sheriffs and bandits through a "squad" record (who flanks, who moves, last
+shot). Bandits get roles at the start of a fight (front, flank, camp), 5 rounds, aim to disable
+until you hurt one; losing the leader or two members breaks them (each gives up or runs).
+`gun_out`/`aim_at` on any resident draws the gun aimed at a target; sheriffs walking up to you now
+aim instead of carrying the gun low.
+
+**Hold-up and captivity.** Guards cover you from both sides; a countdown at 50/100/125 ticks; the
+captive is fetched, hauled up (LIFT 40 ticks) and walked to the post a step at a time. One bandit
+keeps watch at night in three-hour shifts, walking a round; F works the ropes (300 ticks) unless the
+watch is within 4 cells; the loot pile is guarded even during the cool-down. Bandits notice less in
+the dark (6 cells) and when you crouch.
+
+**Outlaws in town** (`sim/law/outlaw_arrest.gd`). Supply runs at 09:00 every third day (never the
+leader). Sheriffs who see a bandit move in; townsfolk send a runner (witness report kind
+"outlaw"). Surrender 70% (+10 with two sheriffs; a `stubborn` one always fights). A shootout between
+people uses `Wounds.shoot` on residents. Three days in the cell, then sent back. Sheriffs busy with
+an outlaw (`collar`), a sighting (`search`) or a case (`case`) are skipped by residents.gd and law.gd.
+
+**Temperaments** (`Brawl.temperament`, fixed by id): fighter (30%, +20 in heavy trades), timid (20%),
+confront (the rest: stands up to you for 40 ticks, then reports unless you've backed off 5 cells).
+After a shooting nobody from the law saw, one witness reports "discharge" once it's quiet.
+
+**Wanted** (`sim/law/notoriety.gd`). Townsfolk recognise a wanted player by the sheriffs' rule;
+they mutter, and a "confront" one may report a sighting (a sheriff comes looking, 1200 ticks).
+Non-timid shopkeepers refuse; prices double. Fines (12 coins an hour, only trespass, assault,
+discharge, kick) go to the town purse; turning yourself in halves the hours. Crime chronicle
+entries now store the player's outfit.
+
+**Conversations** (`sim/player/conversation.gd`). Options are built in the simulation; the window
+is unchanged; lists over 7 are paged ("More…", `player_control.talk_page`). News is told once per
+person (`told_you`). Barkeep rumours need the bar open (3 coins). The Governor's pardon (200 coins,
+free after clearing the bandits) clears every town's record. Known places live in
+`player_status.known_places` (the map marks the camp).
+
+**Investigations** (`sim/law/investigation.gd`). Deaths record `died_tick`, `died_at`, `cause`.
+Missed after 600 ticks (1800 for someone alone); the sheriff goes to the house, then searches where
+they were last seen: where they died only if someone was near then, otherwise round the town store
+(so a body hidden out of the way stays hidden). Verdict: witness saw the player (filed by outfit),
+motive in the dead's memories (suspect: the sheriff wants a word; deny or confess), or open. The
+dead are `buried` (no longer drawn). Not built: footprints, spent shells, blood trails as clues.
+
+**Bounties** (`sim/law/bounties.gd`): 40 a head alive, 100 the leader, half dead; paid from the
+town purse (as much as it holds); chronicle "bounty". **Regrowth**: a recruit every 4 days at noon
+(up to 5; tents 4 and 5 at [-9,-1] and [9,-4]); after clearing, the beaten leave the valley
+(`gone`: not drawn or simulated; their goods stay counted); a season later a new camp at least 60
+cells from old ones (`old_camps`), the old camp `abandoned` (no fire).
+
+## 2026-11-26: Buildings with height, smooth walking, capture over killing, jail catch-up, roads, your house [owner]
+
+**Buildings stand up** (view only, `roofs.gd`): a front wall from the ground to a height by kind (64
+px homes, 72 workshops, 80 office/store/market, 96 saloon and town house, against a person's 44)
+and the roof lifted by it; the Roof node sorts at the front edge. Standing behind a building (in
+its raised area), or on your terrace, fades it to 38%. Floor-plan doors of roofed buildings are
+hidden. Each kind has its own front (signs, doors, details).
+
+**Walking** (view): NPCs (not the player, whose pace is tuned to the input queue) walk at their own
+measured step rate (ticks per cell, smoothed 0.65) at 96% of it, holding the walk between steps.
+
+**Fights**: NPCs aiming or firing get `pose.aiming` with the exact heading and recoil; reload phase
+loops like yours; a tackle sets `tackle` (drawn as a shove, never a brawl `attack`, which would
+mark them busy). Fighters skip cover a partner holds or is heading for (`_taken`), a flanker holds
+his spot (`cycle.stay`), the bandit holding the camp falls back to a set post. No ambient chat for
+anyone fighting, fleeing, reporting or arresting.
+
+**Capture over killing**: `Gunfire.safe_to_rush` (down, or crawling with no shot for 30 ticks or
+the gun away) moves any alert, lethal included, to "arrest" with `rush`; the lead sprints a step a
+tick and shoves; others take `side_spot`s. Firing again clears `rush` and makes it lethal. Bandits
+do the same through `_bring_in` (fetch at a run, `_cover_the_rush`). gunfire_test now expects
+capture.
+
+**Jail**: "Wait it out" stops 20 ticks before release (a frame of look-ahead). Over 2400 ticks it's a
+catch-up: `sim.step()` in a 12 ms budget a frame behind a card, nothing drawn; the result hashes the
+same as stepping normally.
+
+**Roads**: `Navigation.request_walk_path` (street grid: road centre 1.0, edge 1.2, open 1.6; hops
+of 8 or fewer cells use the plain grid) for townsfolk's daily walks, your walk-to and searching
+sheriffs; fights and chases stay direct. Detailed townsfolk step on `walk_next` with `Pace.delay`.
+
+**Your house** (`player_house.gd`): `s.player_home`, door south, 16x12 with custom inside walls (a
+bedroom left of the hall), a `back_doors` opening (world_db) to a 16x6 terrace; furniture kinds
+counter, fridge, sofa, fireplace, deck, squat_rack, bench_press, deadlift_platform, pullup_bar,
+plate_tree (the deck and the gear aren't solid). Activities (`activities.gd`) are timed stage
+lists in `player_control.activity`; F next to a piece starts it, F or moving winds it down (the
+bar goes back first). A full set: fitness +1 (stamina pool 100 + fitness/5 up to +20; carrying +1.0
+per 10, up to +5), fatigue +6, thirst +5; spent at fatigue 80. The fridge drink: thirst -50, 12 off
+each part's damage, once per 600 ticks. Lying on the bed or the sofa eases stress and lifts mood.
+
+**New game at home** (`Activities.begin_at_home(sim, choice)`): the app passes a number from the
+wall clock when you press New game (title or death screen), so each game opens on a different
+activity; for a given number the simulation is deterministic. Tests and saves are unaffected
+(`start_game` itself is unchanged).
+
+**Fixes found by the full suite** (2026-11-26): the per-person step timer could leave a townsperson
+on odd ticks, and sleep recovers only on every 10th tick, so sleepers never rested and the bakers
+stopped baking (winter soak 81% near starving): standing still, the timer returns to even ticks.
+A sheriff in a shootout with no line on the outlaw works in instead of firing into a wall. Your
+house is added only to games with households (a bare legacy village gained goods). Gang
+recruitment runs at 12:30, not on the noon tick, and newcomers appear 60 cells from camp (a long
+route search took 22 ms).

@@ -178,6 +178,15 @@ func _draw() -> void:
 			draw_string_outline(_serif, note_at, standing, HORIZONTAL_ALIGNMENT_LEFT, -1, note_size, 4, Color(PARCHMENT, 0.85))
 			draw_string(_serif, note_at, standing, HORIZONTAL_ALIGNMENT_LEFT, -1, note_size, INK_FAINT.darkened(0.3))
 		town_rects.append({"town": int(town.id), "rect": rect})
+	# The bandit camp, once someone has told you where it is (conversation.gd).
+	if bool(state.get("player_status", {}).get("known_places", {}).get("bandit_camp", false)) and state.has("bandits"):
+		var camp: Vector2 = screen_of(Vector2(state.bandits.cell[0], state.bandits.cell[1]) * CELL)
+		var cleared: bool = bool(state.bandits.get("cleared", false))
+		draw_line(camp + Vector2(-7, -7), camp + Vector2(7, 7), MARK, 3.0)
+		draw_line(camp + Vector2(-7, 7), camp + Vector2(7, -7), MARK, 3.0)
+		var label: String = "Bandit camp (cleared)" if cleared else "Bandit camp"
+		draw_string_outline(_serif, camp + Vector2(11, 5), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 4, Color(PARCHMENT, 0.85))
+		draw_string(_serif, camp + Vector2(11, 5), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, INK)
 	# The waypoint pin and the player's mark.
 	if waypoint != Vector2.INF:
 		var pin: Vector2 = screen_of(waypoint)

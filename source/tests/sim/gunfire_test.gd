@@ -124,10 +124,20 @@ func _initialize() -> void:
 	fire(sim2, s2)
 	for id in near_cells: s2.entities[str(id)].cell = near_cells[id]   # now they are back among the buildings
 	check(Gunfire.alert_of(s2, 1).get("phase", "") == "lethal" and bool(Gunfire.alert_of(s2, 1).lethal), "Firing again after stopping makes it lethal")
-	var died := false
+	# Shooting to kill they hit hard; but once you're down they want you alive: they rush in and take
+	# you rather than finish you off.
+	var hit_hard := false
+	var rushed := false
+	var taken := false
 	for t in range(1200):
-		if t % 60 == 0 and not bool(s2.player_control.get("dead", false)): fire(sim2, s2)
+		if t % 60 == 0 and not bool(s2.player_control.get("dead", false)) and not load("res://sim/combat/brawl.gd").player_down(s2) and not Law.restrained(s2): fire(sim2, s2)
 		else: sim2.step()
-		if bool(s2.player_control.get("dead", false)) or BodyHealth.overall(s2) <= 0: died = true; break
-	check(died, "Sheriffs shooting to kill can kill the player (overall %d)" % BodyHealth.overall(s2))
+		if BodyHealth.overall(s2) < 100: hit_hard = true
+		for id in Sheriff.roster(s2, 1):
+			if bool(s2.residents[str(id)].get("arrest", {}).get("rush", false)): rushed = true
+		if Law.restrained(s2) or Law.in_custody(s2) or str(s2.residents[str(Sheriff.roster(s2, 1)[0])].get("arrest", {}).get("phase", "")) in ["cuff", "lift"]: taken = true; break
+		if bool(s2.player_control.get("dead", false)): break
+	check(hit_hard, "Sheriffs shooting to kill hit hard (overall %d)" % BodyHealth.overall(s2))
+	check(rushed, "Once you're down they rush in")
+	check(taken or bool(s2.player_control.get("dead", false)), "...and take you alive (or you die of your wounds)")
 	print("Gunfire: %s" % ("PASS" if failures == 0 else "FAIL")); quit(failures)

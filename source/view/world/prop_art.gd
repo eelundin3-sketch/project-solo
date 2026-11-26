@@ -4,10 +4,16 @@ extends RefCounted
 const INK := Color("38291f")
 
 static func polygon(c: Node2D, points: PackedVector2Array, fill: Color, stroke: Color = INK, width: float = 0.85) -> void:
-	c.draw_colored_polygon(points, fill)
+	# A shape too thin or twisted to fill (a log seen end-on, a squashed ellipse) is only outlined:
+	# filling it makes the renderer log "Invalid polygon data" on every redraw.
+	if fillable(points): c.draw_colored_polygon(points, fill)
 	if width <= 0: return
 	points.append(points[0])
 	c.draw_polyline(points, stroke, width, true)
+
+## True if the renderer can fill this outline (it splits into triangles).
+static func fillable(points: PackedVector2Array) -> bool:
+	return points.size() >= 3 and not Geometry2D.triangulate_polygon(points).is_empty()
 
 static func ellipse(c: Node2D, center: Vector2, radius: Vector2, fill: Color, angle: float = 0.0, stroke: Color = INK, width: float = 0.85) -> void:
 	var outline := PackedVector2Array()

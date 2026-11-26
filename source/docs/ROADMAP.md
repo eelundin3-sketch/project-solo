@@ -57,6 +57,13 @@ All of this is on the local branch `feature/quick-wins`, committed and not pushe
   - favours (T3);
   - the journal on J (G4);
   - standing on the map (G2).
+- **Milestone 5 (2026-11-20, local commits):**
+  - night lighting with street lamps, lit windows and a lantern; `Light.level` for stealth (V1);
+  - weather per town, drought hurting crops, trades by climate, farming families moving (C5);
+  - mud slows walking on roads, fog shortens sight, rain and snow particles, wet ground (W1);
+  - seasons and harvest (E7); seasonal colours (V2); price trend arrows and known prices (E1).
+  - **[owner]** four parts of the day (morning 04-10, day 10-16, evening 16-22, night 22-04) drive light, sun shadows, sleep (bed 21-22, up 06-07) and shop hours; 15-day seasons; a new game starts on the first day of summer at 07:00.
+  - Not done: lanterns are not sold yet; autumn trees only shift toward olive (the tree art needs autumn leaves); no rain sound (S3).
 
 ### Loose ends, and where they now go
 | Loose end | Goes in |
@@ -111,7 +118,7 @@ All of this is on the local branch `feature/quick-wins`, committed and not pushe
 
 **Time and units (verified in the code):**
 - 1 tick is the sim step. 10 ticks = 1 in-game minute. 600 ticks = 1 hour. **14,400 ticks = 1 day.** At normal speed that is about 10 ticks per second, so a day takes about 24 real minutes.
-- `s.weather.kind` is "clear", "rain", "fog" or "snow". Seasons are 7-day blocks: `(tick / (14400 * 7)) % 4`, where 3 is winter.
+- `s.weather.kind` is "clear", "rain", "fog" or "snow". Seasons are 15-day blocks starting with summer: `Weather.season(s)` (0 spring, 1 summer, 2 autumn, 3 winter; `SEASON_OFFSET = 1`). The day has four parts in `sim/world/day_clock.gd`: morning 04-10, day 10-16, evening 16-22, night 22-04. A new game starts at 07:00 on day 1 (summer).
 - Coordinates are integer cells `[x, y]`. Distances use cells.
 
 ### 2b. Systems that were already there before steps 1–4
