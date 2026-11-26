@@ -205,7 +205,8 @@ static func update(sim: RefCounted) -> void:
 		if s.tick % 2 == 0: _beaten_life(s)
 		if s.tick - int(b.since) >= NEW_GANG_AFTER: _new_gang(sim)
 		return
-	if s.tick % 14400 == 7200 and (int(s.tick) / 14400) % RECRUIT_EVERY_DAYS == 0: _recruit(sim)
+	# At 12:30, not on the noon tick, where the towns' daily work already runs (the two would add up).
+	if s.tick % 14400 == 7500 and (int(s.tick) / 14400) % RECRUIT_EVERY_DAYS == 0: _recruit(sim)
 	if s.tick % 2 != 0: return
 	var pc: Dictionary = s.player_control
 	var player: Array = s.entities[str(s.player)].cell
@@ -863,6 +864,7 @@ static func _leave_valley(s: Dictionary, npc: Dictionary) -> void:
 
 ## Every few days a newcomer joins (up to five): he walks in from beyond the nearest town and
 ## through it, where the law may spot him (outlaw_arrest.gd), then on to the camp.
+const JOIN_FROM := 60.0   # cells from camp where a newcomer is first seen walking in
 static func _recruit(sim: RefCounted) -> void:
 	var s: Dictionary = sim.state
 	var b: Dictionary = s.bandits
@@ -875,8 +877,11 @@ static func _recruit(sim: RefCounted) -> void:
 	var town: int = Outlaws.nearest_town(s, b.cell)
 	if town == 0: return
 	var store: Array = s.entities[str(s.settlements[str(town)].warehouse)].cell
-	var away := Vector2(store[0] - b.cell[0], store[1] - b.cell[1]).normalized() * 35.0
-	var spawn: Array = _open_near(s, [store[0] + roundi(away.x), store[1] + roundi(away.y)])
+	# He's first seen on the way in from the town's side, a fair walk out from the camp (planning his
+	# whole walk from town is a long search: 16 ms in one tick, over the frame budget).
+	var toward := Vector2(store[0] - b.cell[0], store[1] - b.cell[1])
+	var out: Vector2 = toward.normalized() * minf(JOIN_FROM, toward.length())
+	var spawn: Array = _open_near(s, [b.cell[0] + roundi(out.x), b.cell[1] + roundi(out.y)])
 	if spawn.is_empty(): return
 	var trip: Dictionary = load("res://sim/law/reinforcements.gd")._trip(s, spawn, _seat(b.cell, alive), 3)
 	if trip.is_empty(): return
