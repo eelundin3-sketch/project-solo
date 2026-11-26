@@ -182,7 +182,9 @@ class DepthObject extends Node2D:
 				draw_set_transform(Vector2.ZERO)
 		elif object_kind == "furniture":
 			draw_set_transform(-position)
-			MapArt.draw_furnishing(self, furniture_data, -position)
+			var data: Dictionary = furniture_data
+			if str(data.get("kind", "")) in LIVE_FURNITURE: data = projector.live_furniture(data, entity_id)
+			MapArt.draw_furnishing(self, data, -position)
 			draw_set_transform(Vector2.ZERO)
 		elif object_kind == "rock": MapArt.rock(self, Vector2.ZERO)
 		elif object_kind == "caravan": MapArt.cart(self, Vector2.ZERO)
@@ -263,6 +265,7 @@ func animate(delta: float, paused: bool, speed: int) -> void:
 	var depth_count: int = depth_objects.size()
 	_sync_depth_objects()
 	if roofs_changed or depth_objects.size() != depth_count: _hide_roofed_doors()
+	if not is_far(): _repaint_house()
 	t = _lap("v:depth_sync", t)
 	_update_doors(minf(delta, 0.1))
 	t = _lap("v:doors", t)
@@ -410,7 +413,7 @@ func _sync_characters(delta: float = -1.0) -> void:
 			add_child(character)
 			character.setup(entity.id, entity.kind == "player", entity.kind == "raider")
 			character_models[key] = character
-		character_models[key].z_index = 2 if pose.get("action", "") == "rest" and int(pose.get("rest_rot", -1)) >= 0 else 0  # sleepers lie on top of the bed
+		character_models[key].z_index = 2 if (pose.get("action", "") == "rest" and int(pose.get("rest_rot", -1)) >= 0) or pose.get("action", "") in ["bench", "squat", "deadlift", "pullup"] else 0  # sleepers lie on top of the bed; a lifter is drawn over the gear
 		# Inside a building with its roof on (not the one you're in): not seen, and not drawn.
 		character_models[key].visible = not roofs_layer.covered(simulation.state, key, pose.position)
 		# On the map a figure is a few pixels tall: it still moves every frame, but its pose is
@@ -678,6 +681,7 @@ func _sync_depth_objects() -> void:
 		match entry[1]:
 			"fixture": node.fixture_index = entry[4]
 			"furniture":
+				if str(entry[4].get("kind", "")) == "deck": node.z_index = -1   # the terrace floor, under everyone
 				if node.furniture_data != entry[4]:
 					node.furniture_data = entry[4]
 					node.queue_redraw()
@@ -880,6 +884,33 @@ func _draw_travel_goal(s: Dictionary) -> void:
 
 func atime_for_marker() -> float:
 	return atmosphere_time
+
+## Furniture that moves: the fire, the fridge door, a bar lifted off its rack (activities.gd).
+const LIVE_FURNITURE := ["fireplace", "fridge", "squat_rack", "bench_press", "deadlift_platform"]
+func live_furniture(data: Dictionary, building_id: int) -> Dictionary:
+	var live: Dictionary = data.duplicate()
+	live.time = atmosphere_time
+	var s: Dictionary = simulation.state
+	if building_id != int(s.get("player_home", -1)): return live
+	var act: Dictionary = load("res://sim/player/activities.gd").stage_of(s)
+	if act.is_empty() or int(act.index) != int(data.get("index", -1)): return live
+	var stage: String = str(act.stage)
+	live.bar_out = load("res://sim/player/activities.gd").bar_in_hands(str(act.kind), stage, float(act.phase))
+	if act.kind == "fridge":
+		live.open = {"open": float(act.phase), "reach": 1.0, "close": 1.0 - float(act.phase)}.get(stage, 0.0)
+	return live
+
+## Every frame: the live pieces of your house repaint (a handful of nodes, only when it's near).
+func _repaint_house() -> void:
+	var s: Dictionary = simulation.state
+	var home: int = int(s.get("player_home", 0))
+	if home == 0: return
+	var house: Dictionary = s.entities.get(str(home), {})
+	var items: Array = house.get("furniture", [])
+	for index in range(items.size()):
+		if not str(items[index].kind) in LIVE_FURNITURE: continue
+		var node = depth_objects.get("furniture:%d:%d" % [home, index])
+		if node != null: node.queue_redraw()
 
 ## The doors of buildings seen from outside are drawn on their front walls (roofs.gd): the
 ## floor-plan door nodes underneath are hidden.

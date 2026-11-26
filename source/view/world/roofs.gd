@@ -32,6 +32,7 @@ class Roof extends Node2D:
 	var night: bool = false
 	var smoking: bool = false
 	var smoke_time: float = 0.0
+	var terrace := Rect2()          # your house's terrace (world pixels): standing on it fades the house
 	func _draw() -> void:
 		var lift := Vector2(0, -height)
 		var dark: Color = base.darkened(0.28)
@@ -296,6 +297,7 @@ func sync(view: Node2D, s: Dictionary, player_point: Vector2, far: bool) -> bool
 			# Its raised part: the area above the footprint that the walls and roof stand over.
 			var raised := Rect2(roof.position + roof.bounds.position - Vector2(0, roof.height), Vector2(roof.bounds.size.x, roof.height + 2.0))
 			if raised.grow(-2).has_point(player_point + Vector2(0, -10)): alpha = FADED
+			elif roof.terrace.size != Vector2.ZERO and roof.terrace.grow(12).has_point(player_point): alpha = FADED   # out on your terrace
 			elif mine.size != Vector2.ZERO and raised.intersects(mine.grow(-4)): alpha = FADED
 		if not is_equal_approx(roof.modulate.a, alpha): roof.modulate.a = alpha
 	return rebuilt or before != hidden_id
@@ -356,6 +358,8 @@ func _make(view: Node2D, s: Dictionary, building: Dictionary) -> Roof:
 	if door.size() == 2 and not World.building_contains(building, [door[0], door[1] + 1]):
 		roof.door_x = float(door[0]) * CELL - origin.x
 		roof.door_ground = (float(door[1]) + 0.5) * CELL - origin.y
+	var deck: Array = building.get("terrace", [])
+	if deck.size() == 4: roof.terrace = Rect2(Vector2(deck[0], deck[1]) * CELL - Vector2.ONE * CELL / 2.0, Vector2(deck[2], deck[3]) * CELL)
 	view.add_child(roof)
 	return roof
 

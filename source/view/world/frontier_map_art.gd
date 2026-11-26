@@ -1,5 +1,6 @@
 extends RefCounted
 ## Original, deterministic presentation shapes; no gameplay state is stored here.
+const HomeArt = preload("res://view/world/home_art.gd")
 const TREES = [preload("res://content/art/tree_0.svg"), preload("res://content/art/tree_1.svg"), preload("res://content/art/tree_2.svg"), preload("res://content/art/tree_3.svg")]
 const DEAD_TREES = [preload("res://content/art/tree_dead_0.svg"), preload("res://content/art/tree_dead_1.svg")]
 const World = preload("res://sim/world/world_db.gd")
@@ -246,7 +247,13 @@ static func furnishings(entity: Dictionary) -> Array[Dictionary]:
 			"bar_counter", "writing_desk":
 				point = rect.get_center()
 				bottom = rect.size.y - 8.0
-		items.append({"kind": layout.kind, "point": point, "bottom": bottom, "rot": rot, "center": rect.get_center(), "size": rect.size,
+			"deck":
+				point = rect.position + Vector2(12, 12)
+				bottom = 0.0
+			"counter", "fridge", "sofa", "fireplace", "squat_rack", "bench_press", "deadlift_platform", "pullup_bar", "plate_tree":
+				point = rect.position + Vector2(12, 12)
+				bottom = rect.size.y - 12.0
+		items.append({"kind": layout.kind, "index": items.size(), "point": point, "bottom": bottom, "rot": rot, "center": rect.get_center(), "size": rect.size,
 			"width": rect.size.x - 8, "color": Color("9fa7a5")})
 	return items
 
@@ -295,6 +302,17 @@ static func _draw_base_pose(c: Node2D, item: Dictionary) -> void:
 		"bar_counter": bar_counter(c, p, item.size)
 		"writing_desk": writing_desk(c, p, item.size)
 		"toilet": toilet(c, p)
+		# Your house and its terrace (home_art.gd); `state` carries what's moving (a bar in your hands, the fridge door).
+		"deck": HomeArt.deck(c, p, item.size)
+		"counter": HomeArt.counter(c, p, item.size)
+		"fridge": HomeArt.fridge(c, p, float(item.get("open", 0.0)))
+		"sofa": HomeArt.sofa(c, p, item.size)
+		"fireplace": HomeArt.fireplace(c, p, item.size, float(item.get("time", 0.0)))
+		"squat_rack": HomeArt.squat_rack(c, p, item.size, bool(item.get("bar_out", false)))
+		"bench_press": HomeArt.bench_press(c, p, item.size, bool(item.get("bar_out", false)))
+		"deadlift_platform": HomeArt.deadlift_platform(c, p, item.size, bool(item.get("bar_out", false)))
+		"pullup_bar": HomeArt.pullup_bar(c, p, item.size)
+		"plate_tree": HomeArt.plate_tree(c, p)
 
 ## The intake desk in the sheriff's office: ledger, ink, a stamp, and the box camera used for mugshots.
 static func booking_desk(c: Node2D, p: Vector2, size: Vector2) -> void:

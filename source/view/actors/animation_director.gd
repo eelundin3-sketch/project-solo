@@ -181,6 +181,24 @@ static func action_for(s: Dictionary, entity: Dictionary, aim_held: bool = false
 		result.action = "rest"
 		result.rest_rot = int(s.player_control.sleeping.get("rot", 0))
 		return result
+	# At home (activities.gd): a workout, a drink, resting on the bed or the sofa, step by step.
+	if entity.kind == "player":
+		var act: Dictionary = load("res://sim/player/activities.gd").stage_of(s)
+		if not act.is_empty():
+			match str(act.kind):
+				"rest":
+					result.action = "rest"
+					result.rest_rot = int(_home_piece(s, int(act.index)).get("rot", 0))
+				"sofa":
+					result.action = "sit"
+					result.face = [0, -1]
+				_:
+					result.action = str(act.kind)
+					result.stage = str(act.stage)
+					result.phase = float(act.phase)
+					result.rep = int(act.rep)
+					result.bar = load("res://sim/player/activities.gd").bar_in_hands(str(act.kind), str(act.stage), float(act.phase))
+			return result
 	# Tied up at the bandits' camp: sitting on the ground, roped.
 	if entity.kind == "player" and not s.get("player_control", {}).get("captive", {}).is_empty():
 		# Being walked to the post: hands bound behind the back; there, sat and roped.
@@ -366,6 +384,9 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		# A sleeper lies in the middle of the bed's mattress, not on the cell the simulation uses.
 		var sleeping_in: Dictionary = s.get("residents", {}).get(key, {}).get("sleeping", {})
 		if entity.kind == "player": sleeping_in = s.get("player_control", {}).get("sleeping", {})
+		if entity.kind == "player" and str(s.get("player_control", {}).get("activity", {}).get("kind", "")) == "rest":
+			var bed: Dictionary = _home_piece(s, int(s.player_control.activity.index))
+			if not bed.is_empty(): sleeping_in = {"bed_rect": bed.rect, "rot": int(bed.get("rot", 0))}   # lying down on your bed
 		var old_pose: Dictionary = actors.get(key, {})
 		if not sleeping_in.get("bed_rect", []).is_empty():
 			target = bed_center(sleeping_in.bed_rect, int(sleeping_in.rot))
@@ -386,6 +407,8 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		var run_tick: int = s.get("player_control", {}).get("running_tick", -100) if entity.kind == "player" else int(s.get("residents", {}).get(key, {}).get("running_tick", -100))
 		var sprinting: bool = (entity.kind == "player" and run_tick > 0 and run_tick >= s.tick - 1) or (s.get("residents", {}).has(key) and run_tick > 0 and run_tick >= s.tick - 2)
 		var jumped: bool = before.distance_to(target) > CELL * 8
+		# At home, starting on something (the bench, the rack, the bed): straight into place.
+		if entity.kind == "player" and not s.get("player_control", {}).get("activity", {}).is_empty(): jumped = true
 		# Each person's own step rate (ticks per cell, smoothed over the last few steps): the figure
 		# walks at exactly that pace, so it reaches each cell as the next step begins instead of
 		# arriving early and standing still between steps (which read as bumpy, stop-start walking).
@@ -506,6 +529,8 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		if action in ["sit", "cook"]:
 			var face: Array = state_action.get("face", [0, 1])
 			look = Vector2(float(face[0]), float(face[1]))
+		if action in ["squat", "bench", "deadlift", "pullup"]: look = Vector2(0, 1)   # facing out, toward you
+		if action == "fridge": look = Vector2(0, -1)                                     # facing the fridge
 		if action in ["aim", "shoot", "reload", "melee", "hit", "combat_idle", "chop", "saw", "harvest", "pickup", "punch", "shove", "kick", "mine", "cuff", "pin", "lift", "search", "gun_carry"] and s.entities.has(str(state_action.target)):
 			var target_cell: Array = s.entities[str(state_action.target)].cell
 			var dx: int = target_cell[0] - entity.cell[0]
@@ -590,7 +615,7 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		# An armed upper-body pose can play over the walking or running legs.
 		var lawman_armed: bool = str(s.get("residents", {}).get(key, {}).get("arrest", {}).get("phase", "")) in ["standoff", "approach", "engage", "backup", "assist"] or bool(s.get("residents", {}).get(key, {}).get("gun_out", false)) or not s.get("residents", {}).get(key, {}).get("collar", {}).is_empty()
 		var gun_pose := (gun_equipped or lawman_armed) and action in ["gun_carry", "aim", "reload", "shoot"]
-		if pose.moving and not gun_pose and action not in ["punch", "shove", "kick", "hit", "stagger", "down", "fall", "getup", "rest", "cuffed", "escort", "surrender", "cuff", "pin", "lift", "search", "crawl", "sit", "cook", "tied"]:
+		if pose.moving and not gun_pose and action not in ["punch", "shove", "kick", "hit", "stagger", "down", "fall", "getup", "rest", "cuffed", "escort", "surrender", "cuff", "pin", "lift", "search", "crawl", "sit", "cook", "tied", "squat", "bench", "deadlift", "pullup", "fridge"]:
 			action = "run" if sprinting else ("carry" if quantity > 0 else "walk")
 		elif entity.kind == "player" and player_ready and action == "idle":
 			action = "ready"
@@ -635,6 +660,12 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		pose.machine_work = action == "saw" and state_action.target != 0
 		if pose.machine_work: pose.back = true
 		pose.expected_item = state_action.expected_item
+		# At home: the stage of the lift (or the drink) and how far through it, straight from the simulation.
+		if action in ["squat", "bench", "deadlift", "pullup", "fridge"]:
+			pose.phase = float(state_action.phase)
+			pose.stage = str(state_action.get("stage", ""))
+			pose.rep = int(state_action.get("rep", 0))
+			pose.bar = bool(state_action.get("bar", false))
 		pose.outfit = Outfits.worn(s, int(entity.id))
 		# Crouching eases down in about a third of a second with a small dip past the final
 		# height, and rises again a little more slowly, so neither is a snap.
@@ -686,6 +717,10 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 	for key in actors.keys():
 		if not live_ids.has(key): actors.erase(key)
 	previous_tick = s.tick
+
+static func _home_piece(s: Dictionary, index: int) -> Dictionary:
+	var items: Array = s.get("entities", {}).get(str(s.get("player_home", 0)), {}).get("furniture", [])
+	return items[index] if index >= 0 and index < items.size() else {}
 
 ## The people to animate: the player, every resident and any raiders, without walking the
 ## thousands of trees and buildings in the entity table.
