@@ -700,3 +700,56 @@ town purse (as much as it holds); chronicle "bounty". **Regrowth**: a recruit ev
 (up to 5; tents 4 and 5 at [-9,-1] and [9,-4]); after clearing, the beaten leave the valley
 (`gone`: not drawn or simulated; their goods stay counted); a season later a new camp at least 60
 cells from old ones (`old_camps`), the old camp `abandoned` (no fire).
+
+## 2026-11-26: Buildings with height, smooth walking, capture over killing, jail catch-up, roads, your house [owner]
+
+**Buildings stand up** (view only, `roofs.gd`): a front wall from the ground to a height by kind (64
+px homes, 72 workshops, 80 office/store/market, 96 saloon and town house, against a person's 44)
+and the roof lifted by it; the Roof node sorts at the front edge. Standing behind a building (in
+its raised area), or on your terrace, fades it to 38%. Floor-plan doors of roofed buildings are
+hidden. Each kind has its own front (signs, doors, details).
+
+**Walking** (view): NPCs (not the player, whose pace is tuned to the input queue) walk at their own
+measured step rate (ticks per cell, smoothed 0.65) at 96% of it, holding the walk between steps.
+
+**Fights**: NPCs aiming or firing get `pose.aiming` with the exact heading and recoil; reload phase
+loops like yours; a tackle sets `tackle` (drawn as a shove, never a brawl `attack`, which would
+mark them busy). Fighters skip cover a partner holds or is heading for (`_taken`), a flanker holds
+his spot (`cycle.stay`), the bandit holding the camp falls back to a set post. No ambient chat for
+anyone fighting, fleeing, reporting or arresting.
+
+**Capture over killing**: `Gunfire.safe_to_rush` (down, or crawling with no shot for 30 ticks or
+the gun away) moves any alert, lethal included, to "arrest" with `rush`; the lead sprints a step a
+tick and shoves; others take `side_spot`s. Firing again clears `rush` and makes it lethal. Bandits
+do the same through `_bring_in` (fetch at a run, `_cover_the_rush`). gunfire_test now expects
+capture.
+
+**Jail**: "Wait it out" stops 20 ticks before release (a frame of look-ahead). Over 2400 ticks it's a
+catch-up: `sim.step()` in a 12 ms budget a frame behind a card, nothing drawn; the result hashes the
+same as stepping normally.
+
+**Roads**: `Navigation.request_walk_path` (street grid: road centre 1.0, edge 1.2, open 1.6; hops
+of 8 or fewer cells use the plain grid) for townsfolk's daily walks, your walk-to and searching
+sheriffs; fights and chases stay direct. Detailed townsfolk step on `walk_next` with `Pace.delay`.
+
+**Your house** (`player_house.gd`): `s.player_home`, door south, 16x12 with custom inside walls (a
+bedroom left of the hall), a `back_doors` opening (world_db) to a 16x6 terrace; furniture kinds
+counter, fridge, sofa, fireplace, deck, squat_rack, bench_press, deadlift_platform, pullup_bar,
+plate_tree (the deck and the gear aren't solid). Activities (`activities.gd`) are timed stage
+lists in `player_control.activity`; F next to a piece starts it, F or moving winds it down (the
+bar goes back first). A full set: fitness +1 (stamina pool 100 + fitness/5 up to +20; carrying +1.0
+per 10, up to +5), fatigue +6, thirst +5; spent at fatigue 80. The fridge drink: thirst -50, 12 off
+each part's damage, once per 600 ticks. Lying on the bed or the sofa eases stress and lifts mood.
+
+**New game at home** (`Activities.begin_at_home(sim, choice)`): the app passes a number from the
+wall clock when you press New game (title or death screen), so each game opens on a different
+activity; for a given number the simulation is deterministic. Tests and saves are unaffected
+(`start_game` itself is unchanged).
+
+**Fixes found by the full suite** (2026-11-26): the per-person step timer could leave a townsperson
+on odd ticks, and sleep recovers only on every 10th tick, so sleepers never rested and the bakers
+stopped baking (winter soak 81% near starving): standing still, the timer returns to even ticks.
+A sheriff in a shootout with no line on the outlaw works in instead of firing into a wall. Your
+house is added only to games with households (a bare legacy village gained goods). Gang
+recruitment runs at 12:30, not on the noon tick, and newcomers appear 60 cells from camp (a long
+route search took 22 ms).

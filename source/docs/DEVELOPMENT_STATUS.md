@@ -6,8 +6,8 @@ Verified 2026-11-20 on branch `feature/quick-wins` (commit `74320c3` plus the ha
 
 | Item | Value |
 |---|---|
-| Tests | 91 in `scripts/test.sh`, all passed (last full run 2026-11-25) |
-| Frame rate (2026-11-25, 1280x720) | about 73 FPS zoom 2 at noon, 70 at night, 54 zoom 1, 39 zoom 0.5, 49 far (0.2), about 680 on the map; worst simulation tick 14.3 ms. Records: `docs/validation/view_benchmark_*_fights_*.json` |
+| Tests | 108 in `scripts/test.sh`, all passed (last full run 2026-11-26, season soak included) |
+| Frame rate (2026-11-26, 1280x720, measured with two game windows open) | about 59 FPS zoom 2 at noon, 57 at night, 46 zoom 1, 32 zoom 0.5, 43 far (0.2), about 600 on the map; the code from before this stretch gives 57 / 46 / 35 / 42 under the same load, so the drop from the 2026-11-25 numbers is the machine, not the code. Worst simulation tick 25.6 ms idle (24.5 for the older code, same load); a one-off 25 ms when you first draw (the cover lookup is built). Records: `docs/validation/view_benchmark_after_life_*.json`, `full_game_benchmark_after_life.json` |
 | Code size (GDScript, excluding Finder copies) | `sim/` about 11,800 lines, `view/` 9,400, `app/` 900, `tests/` 7,700 |
 | GitHub | **PR #14** (`feature/quick-wins` into `chore/app-first-layout`) opened 2026-11-20 at the owner's request; PR #13 (`chore/app-first-layout`) is open and its checks passed; neither is merged |
 
@@ -82,6 +82,15 @@ Big-push order when the owner asks: **PR #13 first**, then the feature branches 
 | **Smarter conversations**: openers from memories, real news told once with follow-ups, introductions, sheriff/barkeep/Governor/bandit/watch/prisoner topics, amends, paged options | `sim/player/conversation.gd` | `smart_talk_test` |
 | **Missing people and investigations**: missed after an hour, house then search, body examined (cause of death), witnesses asked, filed / suspect / open, laid to rest | `sim/law/investigation.gd` | `investigation_test` |
 | **Bounties and prisoners; the gang grows back** (newcomers up to five, beaten leave, a new gang a season after clearing) | `sim/law/bounties.gd`, `bandits.gd` | `bandit_bounty_test` |
+| **Esc pause menu** (Resume, Save, Load, Quit to title, Quit) | `view/ui/pause_menu.gd`, `world_controller.gd` | `pause_menu_test` |
+| **Buildings with height** (front walls and raised roofs; people shorter than houses) and **fronts that show what each building is for** | `view/world/roofs.gd` | `roofs_test`, `buildings_capture` |
+| **Smooth walking for everyone** (each NPC walks at its own step rate) | `animation_director.gd` | `slow_walk_test` |
+| **NPCs animated like you in a fight** (exact aim, recoil, reload, tackle as a shove); fighters spread over different cover; no small talk mid-fight | `animation_director.gd`, `gunfire.gd` | `npc_animation_test`, `bandit_fight_capture` |
+| **Down in a gunfight, they rush in and take you alive** (sheriffs and bandits, flankers covering) | `gunfire.gd`, `law.gd`, `bandits.gd` | `capture_rush_test` |
+| **Jail waits**: the fast-forward stops with two minutes left; sentences over four hours are caught up behind a card in seconds | `world_controller.gd` | `jail_wait_test` |
+| **Everyday walks follow the roads**, and townsfolk are quicker on them | `nav_grid.gd` (street grid), `residents.gd` | `road_walk_test` |
+| **Your house** on the west side of Alder Hollow: bedroom, living room with kitchen and fridge, back terrace with squat rack, bench, deadlift platform, pull-up bar; F uses them step by step (fitness, healing drink, rest) | `sim/settlement/player_house.gd`, `sim/player/activities.gd`, `view/world/home_art.gd` | `player_house_test`, `workout_test`, `home_poses_test`, `house_capture` |
+| **A new game starts at home, mid-activity** (a workout set, the fridge, the bed or the sofa; a different one each game) | `activities.gd` `begin_at_home`, `world_controller.gd` | `player_house_test`, `home_start_capture` |
 
 ## 3. Partly implemented (exact gaps)
 
