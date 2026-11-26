@@ -408,7 +408,6 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		var sprinting: bool = (entity.kind == "player" and run_tick > 0 and run_tick >= s.tick - 1) or (s.get("residents", {}).has(key) and run_tick > 0 and run_tick >= s.tick - 2)
 		var jumped: bool = before.distance_to(target) > CELL * 8
 		# At home, starting on something (the bench, the rack, the bed): straight into place.
-		if entity.kind == "player" and not s.get("player_control", {}).get("activity", {}).is_empty(): jumped = true
 		# Each person's own step rate (ticks per cell, smoothed over the last few steps): the figure
 		# walks at exactly that pace, so it reaches each cell as the next step begins instead of
 		# arriving early and standing still between steps (which read as bumpy, stop-start walking).
@@ -530,7 +529,9 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 			var face: Array = state_action.get("face", [0, 1])
 			look = Vector2(float(face[0]), float(face[1]))
 		if action in ["squat", "bench", "deadlift", "pullup"]: look = Vector2(0, 1)   # facing out, toward you
-		if action == "fridge": look = Vector2(0, -1)                                     # facing the fridge
+		if action == "fridge":
+			# Facing the fridge to open it and reach in; turning round to drink.
+			look = Vector2(0, 1) if str(state_action.get("stage", "")) in ["drink", "lower"] or (str(state_action.get("stage", "")) == "close" and float(state_action.phase) > 0.6) else Vector2(0, -1)
 		if action in ["aim", "shoot", "reload", "melee", "hit", "combat_idle", "chop", "saw", "harvest", "pickup", "punch", "shove", "kick", "mine", "cuff", "pin", "lift", "search", "gun_carry"] and s.entities.has(str(state_action.target)):
 			var target_cell: Array = s.entities[str(state_action.target)].cell
 			var dx: int = target_cell[0] - entity.cell[0]
@@ -616,6 +617,9 @@ func update(s: Dictionary, delta: float, paused: bool, speed: int) -> void:
 		var lawman_armed: bool = str(s.get("residents", {}).get(key, {}).get("arrest", {}).get("phase", "")) in ["standoff", "approach", "engage", "backup", "assist"] or bool(s.get("residents", {}).get(key, {}).get("gun_out", false)) or not s.get("residents", {}).get(key, {}).get("collar", {}).is_empty()
 		var gun_pose := (gun_equipped or lawman_armed) and action in ["gun_carry", "aim", "reload", "shoot"]
 		if pose.moving and not gun_pose and action not in ["punch", "shove", "kick", "hit", "stagger", "down", "fall", "getup", "rest", "cuffed", "escort", "surrender", "cuff", "pin", "lift", "search", "crawl", "sit", "cook", "tied", "squat", "bench", "deadlift", "pullup", "fridge"]:
+			action = "run" if sprinting else ("carry" if quantity > 0 else "walk")
+		elif pose.moving and action in ["squat", "bench", "deadlift", "pullup", "fridge"] and str(state_action.get("stage", "")) in ["setup", "sit", "jump", "open"]:
+			# Stepping into place at the start: a few real steps, then the lift begins.
 			action = "run" if sprinting else ("carry" if quantity > 0 else "walk")
 		elif entity.kind == "player" and player_ready and action == "idle":
 			action = "ready"

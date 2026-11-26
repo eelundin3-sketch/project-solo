@@ -12,14 +12,14 @@ const WOOD := Color("9c7246")
 const WOOD_DARK := Color("6b4b2c")
 
 ## A loaded barbell from `a` to `b` (its two ends, where the plates sit), seen slightly from above.
-static func barbell(c: CanvasItem, a: Vector2, b: Vector2, plates: int = 2) -> void:
+static func barbell(c: CanvasItem, a: Vector2, b: Vector2, plates: int = 2, size: float = 1.0) -> void:
 	var along: Vector2 = (b - a).normalized() if a.distance_to(b) > 0.5 else Vector2.RIGHT
-	c.draw_line(a - along * 4.0, b + along * 4.0, STEEL_DARK, 3.0, true)
-	c.draw_line(a - along * 4.0, b + along * 4.0, STEEL, 1.6, true)
+	c.draw_line(a - along * 4.0 * size, b + along * 4.0 * size, STEEL_DARK, 3.0 * size, true)
+	c.draw_line(a - along * 4.0 * size, b + along * 4.0 * size, STEEL, 1.6 * size, true)
 	for end in [a, b]:
 		for k in range(plates):
-			var at: Vector2 = end + along * (float(k) * 2.4 * (-1.0 if end == a else 1.0))
-			var ring := Vector2(2.2, 9.0 - float(k) * 1.5)
+			var at: Vector2 = end + along * (float(k) * 2.4 * size * (-1.0 if end == a else 1.0))
+			var ring := Vector2(2.2, 9.0 - float(k) * 1.5) * size
 			var pts := PackedVector2Array()
 			for i in range(14):
 				var ang: float = float(i) / 14.0 * TAU
@@ -106,18 +106,23 @@ static func fireplace(c: CanvasItem, p: Vector2, size: Vector2, time: float) -> 
 		c.draw_colored_polygon(PackedVector2Array([base + Vector2(-2, 0), base + Vector2(0, -6 - flick * 0.5), base + Vector2(2, 0)]), Color("ffd772"))
 	c.draw_rect(Rect2(r.position + Vector2(-3, 6), Vector2(r.size.x + 6, 4)), Color("6b5a49"))   # the mantel
 
-## Uprights and J-hooks; the bar sits on the hooks unless it's in your hands.
+## Uprights and J-hooks; the bar sits on the hooks unless it's in your hands. Lined up with the
+## lifter under the bar (drawn_character.gd `_home_pose`): bar centre 24 px right of and 9 px below
+## the first cell's centre, plates 25 px out each side; the uprights stand on the floor where your
+## feet are when you're under it.
 static func squat_rack(c: CanvasItem, p: Vector2, size: Vector2, bar_out: bool) -> void:
-	var left: float = p.x - 4.0
-	var right: float = p.x - 12.0 + size.x - 8.0
-	for x in [left, right]:
-		c.draw_rect(Rect2(Vector2(x - 3, p.y - 58), Vector2(6, 64)), STEEL_DARK)
-		c.draw_rect(Rect2(Vector2(x - 2, p.y - 58), Vector2(2, 64)), STEEL)
-		for y in range(-52, 6, 8): c.draw_circle(Vector2(x, p.y + y), 0.8, Color("2a2c2f"))
-		c.draw_rect(Rect2(Vector2(x - 5, p.y - 30), Vector2(10, 3)), Color("2f3134"))    # the J-hooks
-		c.draw_rect(Rect2(Vector2(x - 6, p.y - 6), Vector2(12, 3)), Color("2f3134"))     # the safety arms
-	c.draw_rect(Rect2(Vector2(left - 6, p.y + 4), Vector2(right - left + 12, 4)), STEEL_DARK)   # the base
-	if not bar_out: barbell(c, Vector2(left - 8, p.y - 31), Vector2(right + 8, p.y - 31))
+	var cx: float = p.x - 12.0 + size.x * 0.5
+	var hooks: float = p.y + 9.0
+	var floor_y: float = p.y + 40.0
+	for x in [cx - 31.0, cx + 31.0]:
+		c.draw_rect(Rect2(Vector2(x - 3, floor_y - 64), Vector2(6, 64)), STEEL_DARK)
+		c.draw_rect(Rect2(Vector2(x - 2, floor_y - 64), Vector2(2, 64)), STEEL)
+		for y in range(-58, -4, 7): c.draw_circle(Vector2(x, floor_y + y), 0.8, Color("2a2c2f"))
+		var hook_dir: float = 1.0 if x < cx else -1.0
+		c.draw_rect(Rect2(Vector2(x - 3 + hook_dir * 3.0, hooks - 1), Vector2(7, 3)), Color("2f3134"))       # the J-hooks
+		c.draw_rect(Rect2(Vector2(x - 3 + hook_dir * 3.0, floor_y - 24), Vector2(9, 3)), Color("2f3134"))    # the safety arms
+	c.draw_rect(Rect2(Vector2(cx - 37, floor_y - 3), Vector2(74, 4)), STEEL_DARK)   # the base
+	if not bar_out: barbell(c, Vector2(cx - 25, hooks), Vector2(cx + 25, hooks))
 
 static func bench_press(c: CanvasItem, p: Vector2, size: Vector2, bar_out: bool) -> void:
 	var cx: float = p.x - 12.0 + size.x * 0.5
@@ -128,10 +133,10 @@ static func bench_press(c: CanvasItem, p: Vector2, size: Vector2, bar_out: bool)
 	c.draw_line(Vector2(cx - 5, top + size.y - 4), Vector2(cx - 5, top + size.y + 2), STEEL_DARK, 2.0)
 	c.draw_line(Vector2(cx + 5, top + size.y - 4), Vector2(cx + 5, top + size.y + 2), STEEL_DARK, 2.0)
 	# Uprights at the head end, the bar across them.
-	for x in [cx - 20.0, cx + 20.0]:
+	for x in [cx - 30.0, cx + 30.0]:
 		c.draw_rect(Rect2(Vector2(x - 2, top - 8), Vector2(4, 28)), STEEL_DARK)
-		c.draw_rect(Rect2(Vector2(x - 4, top), Vector2(8, 2)), Color("2f3134"))
-	if not bar_out: barbell(c, Vector2(cx - 26, top + 1), Vector2(cx + 26, top + 1))
+		c.draw_rect(Rect2(Vector2(x - 4 + (3.0 if x < cx else -3.0), top + 1), Vector2(8, 3)), Color("2f3134"))
+	if not bar_out: barbell(c, Vector2(cx - 25, top + 2), Vector2(cx + 25, top + 2))   # where the lifter takes it from (lined up)
 
 static func deadlift_platform(c: CanvasItem, p: Vector2, size: Vector2, bar_out: bool) -> void:
 	var r := Rect2(p + Vector2(-12, -12), size)
@@ -139,7 +144,7 @@ static func deadlift_platform(c: CanvasItem, p: Vector2, size: Vector2, bar_out:
 	c.draw_rect(Rect2(r.position + Vector2(r.size.x * 0.3, 0), Vector2(r.size.x * 0.4, r.size.y)), Color("a8814f"))   # the wooden middle
 	for x in [r.position.x + r.size.x * 0.3, r.position.x + r.size.x * 0.7]:
 		c.draw_line(Vector2(x, r.position.y), Vector2(x, r.end.y), Color("0e0f10"), 1.0)
-	if not bar_out: barbell(c, Vector2(r.position.x + 6, r.get_center().y - 3), Vector2(r.end.x - 6, r.get_center().y - 3))
+	if not bar_out: barbell(c, Vector2(r.get_center().x - 25, r.get_center().y + 6), Vector2(r.get_center().x + 25, r.get_center().y + 6))   # where the lifter's hands meet it
 
 static func pullup_bar(c: CanvasItem, p: Vector2, size: Vector2) -> void:
 	var left: float = p.x - 10.0

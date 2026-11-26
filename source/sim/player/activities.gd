@@ -30,6 +30,15 @@ const DRINK_EVERY := 600        # one healing drink an hour
 const DRINK_HEAL := 12          # damage taken off each hurt part
 const SPENT_AT := 80            # fatigue at which you can't train
 
+## Whether the bar is in your hands (so the rack or platform shows empty): the view asks.
+const BAR_OUT := {"squat": ["walkout", "rep", "walkin"], "bench": ["rep"], "deadlift": ["hinge", "rep"]}
+static func bar_in_hands(kind: String, stage: String, phase: float) -> bool:
+	if stage in BAR_OUT.get(kind, []): return true
+	if stage == "unrack" and kind in ["squat", "bench"]: return phase > 0.45
+	if stage == "rerack" and kind in ["squat", "bench"]: return phase < 0.55
+	if stage == "release" and kind == "deadlift": return phase < 0.3   # set down at the floor, then you straighten up
+	return false
+
 static func active(s: Dictionary) -> bool:
 	return not s.get("player_control", {}).get("activity", {}).is_empty()
 

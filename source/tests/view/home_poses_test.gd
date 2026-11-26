@@ -22,9 +22,10 @@ func _initialize() -> void:
 	check(body._home_pose("squat", "setup", 0.2, false).barbell.is_empty(), "Squat: no bar in hand before it's unracked")
 	var press_top: Dictionary = body._home_pose("bench", "rep", 0.0, true)
 	var press_low: Dictionary = body._home_pose("bench", "rep", 0.5, true)
-	var top_gap: float = press_top.barbell[0].lerp(press_top.barbell[1], 0.5).distance_to(press_top.chest)
-	var low_gap: float = press_low.barbell[0].lerp(press_low.barbell[1], 0.5).distance_to(press_low.chest)
-	check(low_gap < top_gap - 4.0, "Bench: the bar comes down to the chest and is pressed away (%.1f vs %.1f)" % [low_gap, top_gap])
+	var top_y: float = press_top.barbell[0].lerp(press_top.barbell[1], 0.5).y
+	var low_y: float = press_low.barbell[0].lerp(press_low.barbell[1], 0.5).y
+	# Lying on the back, the bar's height is drawn up the screen: lowered to the chest it sits lower.
+	check(low_y > top_y + 4.0, "Bench: the bar comes down to the chest and is pressed away (%.1f vs %.1f)" % [low_y, top_y])
 	var floor_pull: Dictionary = body._home_pose("deadlift", "rep", 0.0, true)
 	var lockout: Dictionary = body._home_pose("deadlift", "rep", 0.5, true)
 	check(floor_pull.barbell[0].y > lockout.barbell[0].y + 8.0, "Deadlift: from the floor up to the thighs (%.1f -> %.1f)" % [floor_pull.barbell[0].y, lockout.barbell[0].y])
